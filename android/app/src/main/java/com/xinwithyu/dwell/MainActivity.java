@@ -14,6 +14,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
+import android.speech.RecognitionListener;
+import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.view.View;
@@ -37,6 +39,7 @@ public final class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 1001;
     private static final int VOICE_REQUEST = 1002;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1003;
+    private static final int VOICE_PERMISSION_REQUEST = 1004;
 
     private WebView webView;
     private ValueCallback<Uri[]> pendingFileCallback;
@@ -44,6 +47,9 @@ public final class MainActivity extends Activity {
     private OnBackInvokedCallback backCallback;
     private TextToSpeech textToSpeech;
     private String speechKey = "";
+    private SpeechRecognizer speechRecognizer;
+    private Intent voiceIntent;
+    private boolean voiceListening;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -247,6 +253,7 @@ public final class MainActivity extends Activity {
             textToSpeech.shutdown();
             textToSpeech = null;
         }
+        destroySpeechRecognizer();
         if (webView != null) {
             webView.removeJavascriptInterface("Android");
             webView.stopLoading();
@@ -261,16 +268,14 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public void startVoiceInput() {
+            runOnUiThread(MainActivity.this::beginVoiceRecognition);
+        }
+
+        @JavascriptInterface
+        public void stopVoiceInput() {
             runOnUiThread(() -> {
-                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.SIMPLIFIED_CHINESE.toLanguageTag());
-                intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "说点什么…");
-                try {
-                    startActivityForResult(intent, VOICE_REQUEST);
-                } catch (ActivityNotFoundException error) {
-                    evaluate("window.onNativeSpeechCancelled&&window.onNativeSpeechCancelled()");
-                }
+                if (speechRecognizer != null && voiceListening) speechRecognizer.stopListening();
+                else evaluate("window.onNativeSpeechCancelled&&window.onNativeSpeechCancelled()");
             });
         }
 
@@ -423,10 +428,104 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == VOICE_PERMISSION_REQUEST) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) beginVoiceRecognition();
+            else evaluate("window.onNativeSpeechError&&window.onNativeSpeechError('需要麦克风权限才能语音输入')");
+            return;
+        }
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             DwellNotificationJobService.schedule(this);
         }
         evaluate("window.onNativeNotificationChanged&&window.onNativeNotificationChanged()");
+    }
+
+    private void beginVoiceRecognition() {
+        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, VOICE_PERMISSION_REQUEST);
+            return;
+        }
+        if (voiceListening && speechRecognizer != null) {
+            speechRecognizer.stopListening();
+            return;
+        }
+        voiceIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.SIMPLIFIED_CHINESE.toLanguageTag());
+        voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.SIMPLIFIED_CHINESE.toLanguageTag());
+        voiceIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        voiceIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            try {
+                startActivityForResult(voiceIntent, VOICE_REQUEST);
+            } catch (ActivityNotFoundException error) {
+                evaluate("window.onNativeSpeechError&&window.onNativeSpeechError('手机没有可用的语音识别服务')");
+            }
+            return;
+        }
+        destroySpeechRecognizer();
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        speechRecognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {
+                voiceListening = true;
+                evaluate("window.onNativeSpeechReady&&window.onNativeSpeechReady()");
+            }
+            @Override public void onBeginningOfSpeech() {}
+            @Override public void onRmsChanged(float rmsdB) {}
+            @Override public void onBufferReceived(byte[] buffer) {}
+            @Override public void onEndOfSpeech() {
+                evaluate("window.onNativeSpeechProcessing&&window.onNativeSpeechProcessing()");
+            }
+            @Override public void onError(int error) {
+                voiceListening = false;
+                String message;
+                switch (error) {
+                    case SpeechRecognizer.ERROR_AUDIO: message = "没有收到麦克风声音"; break;
+                    case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: message = "麦克风权限不可用"; break;
+                    case SpeechRecognizer.ERROR_NETWORK:
+                    case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: message = "语音识别网络不可用"; break;
+                    case SpeechRecognizer.ERROR_NO_MATCH: message = "没有听清，请再说一次"; break;
+                    case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: message = "语音识别正在使用，请稍后再试"; break;
+                    case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: message = "没有听到说话"; break;
+                    default: message = "语音识别没有成功";
+                }
+                evaluate("window.onNativeSpeechError&&window.onNativeSpeechError(" + JSONObject.quote(message) + ")");
+                destroySpeechRecognizer();
+            }
+            @Override public void onResults(Bundle results) {
+                voiceListening = false;
+                ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (matches != null && !matches.isEmpty()) {
+                    evaluate("window.onNativeSpeechResult&&window.onNativeSpeechResult(" + JSONObject.quote(matches.get(0)) + ")");
+                } else {
+                    evaluate("window.onNativeSpeechError&&window.onNativeSpeechError('没有听清，请再说一次')");
+                }
+                destroySpeechRecognizer();
+            }
+            @Override public void onPartialResults(Bundle partialResults) {
+                ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (matches != null && !matches.isEmpty()) {
+                    evaluate("window.onNativeSpeechPartial&&window.onNativeSpeechPartial(" + JSONObject.quote(matches.get(0)) + ")");
+                }
+            }
+            @Override public void onEvent(int eventType, Bundle params) {}
+        });
+        voiceListening = true;
+        evaluate("window.onNativeSpeechReady&&window.onNativeSpeechReady()");
+        try {
+            speechRecognizer.startListening(voiceIntent);
+        } catch (Exception error) {
+            voiceListening = false;
+            destroySpeechRecognizer();
+            evaluate("window.onNativeSpeechError&&window.onNativeSpeechError('语音识别启动失败')");
+        }
+    }
+
+    private void destroySpeechRecognizer() {
+        voiceListening = false;
+        if (speechRecognizer == null) return;
+        try { speechRecognizer.cancel(); } catch (Exception ignored) {}
+        try { speechRecognizer.destroy(); } catch (Exception ignored) {}
+        speechRecognizer = null;
     }
 }

@@ -21,6 +21,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import readline from 'node:readline';
 import { listDesktopTasks, controlDesktopTask } from './desktop-tasks.mjs';
+import { listClaudeCodeChats, loadClaudeCodeChat } from './claude-history.mjs';
 
 let webpush = null;
 try { ({ default: webpush } = await import('web-push')); } catch { /* optional until npm install */ }
@@ -40,11 +41,13 @@ const STORY_DIR = path.join(WORKSPACE, 'story');
 const NIGHT_DIR = path.join(WORKSPACE, 'night');
 const CLAUDE_BIN = process.env.DWELL_CLAUDE_BIN || 'claude';
 const CLAUDE_TIMEOUT_MS = Number(process.env.DWELL_CLAUDE_TIMEOUT_MS || 15 * 60 * 1000);
-const CLAUDE_BARE = process.env.DWELL_CLAUDE_BARE !== '0';
+const CLAUDE_BARE = process.env.DWELL_CLAUDE_BARE === '1';
+const CLAUDE_SAFE_MODE = process.env.DWELL_CLAUDE_SAFE_MODE !== '0';
+const CLAUDE_MODEL_OVERRIDE = String(process.env.DWELL_CLAUDE_MODEL || '').trim();
 const GONG_MODEL = process.env.DWELL_GONG_MODEL || 'haiku';
 const PERMISSION_MODE = process.env.DWELL_PERMISSION_MODE || 'acceptEdits';
 const AUTH_TOKEN = process.env.DWELL_AUTH_TOKEN || '';
-const SERVER_VERSION = '0.4.4';
+const SERVER_VERSION = '0.4.5';
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_TEXT = 600_000;
 const MAX_UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -552,17 +555,18 @@ function usageView() {
 }
 
 async function connectorItems() {
-  const items = [{ name: 'Claude Code CLI', status: `${CLAUDE_BIN}${CLAUDE_BARE ? ' · bare 模式' : ' · hooks/MCP 已启用'}` }];
+  const mode = CLAUDE_SAFE_MODE ? '安全模式 · 本机工具' : CLAUDE_BARE ? 'bare 模式' : 'hooks/MCP 已启用';
+  const items = [{ name: 'Claude Code CLI', status: `${CLAUDE_BIN} · ${mode}${CLAUDE_MODEL_OVERRIDE ? ` · ${CLAUDE_MODEL_OVERRIDE}` : ''}` }];
   if (apiAuth.mode === 'api' && apiAuth.base) items.push({ name: '备用 API', status: apiAuth.base });
   try {
     const data = JSON.parse(await fsp.readFile(path.join(WORKSPACE, '.mcp.json'), 'utf8'));
-    for (const name of Object.keys(data.mcpServers || {})) items.push({ name, status: CLAUDE_BARE ? '已配置 · bare 模式未加载' : '项目 MCP' });
+    for (const name of Object.keys(data.mcpServers || {})) items.push({ name, status: CLAUDE_SAFE_MODE || CLAUDE_BARE ? '已配置 · 手机安全模式未加载' : '项目 MCP' });
   } catch {}
   return items;
 }
 
 function permissionMode() {
-  if (state.toolAccess === 'Ask') return 'default';
+  if (state.toolAccess === 'Ask') return 'manual';
   if (state.toolAccess === 'Plan') return 'plan';
   return PERMISSION_MODE;
 }
@@ -576,6 +580,7 @@ function activeChatRecord() {
 }
 
 function modelForCli(model) {
+  if (CLAUDE_MODEL_OVERRIDE) return CLAUDE_MODEL_OVERRIDE;
   const value = String(model || '').replace(/\[1m\]$/, '').toLowerCase();
   if (value.includes('opus')) return 'opus';
   if (value.includes('haiku')) return 'haiku';
@@ -682,8 +687,10 @@ function providerMessages(kind, prompt, attachments, chatId = '', beforeSeq = Nu
   return merged;
 }
 
-function cliArgs(prompt, firstTurn, chatId = state.activeChatId, sessionOverride = '') {
-  const args = ['-p', prompt, '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--permission-mode', permissionMode(), '--add-dir', WORKSPACE];
+function cliArgs(prompt, firstTurn, chatId = state.activeChatId, sessionOverride = '', workingDirectory = WORKSPACE) {
+  const args = ['-p', prompt, '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--permission-mode', permissionMode(), '--add-dir', workingDirectory];
+  if (workingDirectory !== WORKSPACE) args.push('--add-dir', WORKSPACE);
+  if (CLAUDE_SAFE_MODE) args.push('--safe-mode', '--no-chrome');
   if (CLAUDE_BARE) args.push('--bare');
   const cliModel = modelForCli(state.model);
   if (cliModel) args.push('--model', cliModel);
@@ -860,12 +867,17 @@ function messagePartsFromAssistant(message) {
 }
 
 async function runClaude(prompt, attachments, run) {
-  const priorSession = chatRecord(run.chatId)?.sessionId || '';
+  const chat = chatRecord(run.chatId);
+  const priorSession = chat?.sessionId || '';
   const firstTurn = !priorSession;
   run.sessionId = priorSession || crypto.randomUUID();
   const fullPrompt = `${prompt || '请看看附件。'}${await attachmentPrompt(attachments)}`;
-  const child = spawn(CLAUDE_BIN, cliArgs(fullPrompt, firstTurn, run.chatId, run.sessionId), {
-    cwd: WORKSPACE,
+  let workingDirectory = WORKSPACE;
+  if (chat?.source === 'claude-code' && chat.cwd && path.isAbsolute(chat.cwd)) {
+    try { if ((await fsp.stat(chat.cwd)).isDirectory()) workingDirectory = chat.cwd; } catch {}
+  }
+  const child = spawn(CLAUDE_BIN, cliArgs(fullPrompt, firstTurn, run.chatId, run.sessionId, workingDirectory), {
+    cwd: workingDirectory,
     env: { ...process.env, NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -1056,17 +1068,59 @@ async function startTurn(text, attachments = [], options = {}) {
   });
 }
 
-function chatItems(scope = 'all') {
+async function chatItems(scope = 'all') {
   const normalizedScope = scope === 'box' ? 'archived' : scope;
   const populatedChats = new Set(messages.map(message => message.chatId).filter(Boolean));
-  return chats
+  const local = chats
     .filter(chat => {
       if (normalizedScope === 'live' && chat.archived) return false;
       if (normalizedScope === 'archived' && !chat.archived) return false;
       return !!chat.preview || populatedChats.has(chat.id) || (!state.armed && chat.id === state.activeChatId);
     })
     .sort((a, b) => Number(b.last || b.created || 0) - Number(a.last || a.created || 0))
-    .map(chat => ({ ...chat, current: !state.armed && chat.id === state.activeChatId }));
+    .map(chat => ({ ...chat, source: chat.source || 'dwell', sourceLabel: chat.source === 'claude-code' ? 'Mac' : '', current: !state.armed && chat.id === state.activeChatId }));
+  if (normalizedScope === 'archived') return local;
+  const external = await listClaudeCodeChats(chats.map(chat => chat.sessionId).filter(Boolean));
+  return [...local, ...external]
+    .sort((a, b) => Number(b.last || b.created || 0) - Number(a.last || a.created || 0));
+}
+
+async function importClaudeCodeHistory(externalId) {
+  const source = await loadClaudeCodeChat(externalId);
+  if (!source) return null;
+  let chat = chats.find(item => item.sessionId === source.sessionId);
+  if (!chat) {
+    chat = {
+      id: `cc_${source.sessionId}`,
+      name: source.name,
+      created: source.created,
+      last: source.last,
+      preview: source.preview,
+      current: false,
+      archived: false,
+      sessionId: source.sessionId,
+      source: 'claude-code',
+      cwd: source.cwd,
+    };
+    chats.push(chat);
+  } else {
+    chat.name ||= source.name;
+    chat.preview ||= source.preview;
+    chat.created ||= source.created;
+    chat.last = Math.max(Number(chat.last || 0), Number(source.last || 0));
+    chat.source = 'claude-code';
+    chat.cwd ||= source.cwd;
+  }
+  const known = new Set(messages.filter(item => item.chatId === chat.id && item.sourceUuid).map(item => item.sourceUuid));
+  let changed = false;
+  for (const record of source.messages) {
+    if (known.has(record.sourceUuid)) continue;
+    messages.push({ seq: ++nextSeq, chatId: chat.id, ...record });
+    known.add(record.sourceUuid);
+    changed = true;
+  }
+  if (changed) await atomicJsonl(files.messages, messages);
+  return chat;
 }
 
 function currentMessages(before, limit) {
@@ -1220,11 +1274,12 @@ async function handleApi(req, res, url, origin) {
     await persistAll();
     return ok(res, { ok: true, armed: state.armed }, origin);
   }
-  if (route === 'chats' && method === 'GET') return ok(res, { ok: true, items: chatItems(url.searchParams.get('scope') || 'all'), armed: !!state.armed }, origin);
+  if (route === 'chats' && method === 'GET') return ok(res, { ok: true, items: await chatItems(url.searchParams.get('scope') || 'all'), armed: !!state.armed }, origin);
   if (route === 'chats' && method === 'POST') {
     const data = await bodyJson(req);
     const target = data.id === 'CURRENT' ? state.activeChatId : String(data.id || '');
-    const chat = chats.find(item => item.id === target);
+    let chat = chats.find(item => item.id === target);
+    if (!chat && data.action === 'switch' && target.startsWith('claude:')) chat = await importClaudeCodeHistory(target);
     const results = [];
     const setArchived = (item, archived) => {
       if (!item) return false;
@@ -1261,7 +1316,7 @@ async function handleApi(req, res, url, origin) {
     }
     chats = chats.map(item => ({ ...item, current: !state.armed && item.id === state.activeChatId }));
     await persistAll();
-    return ok(res, { ok: true, armed: !!state.armed, results, items: chatItems('all') }, origin);
+    return ok(res, { ok: true, armed: !!state.armed, results, items: await chatItems('all') }, origin);
   }
   if (route === 'notes' && method === 'GET') return ok(res, notes, origin);
   if (route === 'notes' && method === 'POST') { const data = await bodyJson(req); if (data.action === 'add') (notes[data.who === 'gu' ? 'gu' : 'her'] ||= []).unshift({ id: id('note'), who: data.who, text: String(data.text || '').slice(0, 800), at: now(), boxed: false }); if (data.action === 'box') { const list = notes[data.who] || []; const item = list.find(x => x.id === data.id); if (item) item.boxed = !item.boxed; } if (data.action === 'del') notes.her = notes.her.filter(x => x.id !== data.id); await persistAll(); return ok(res, notes, origin); }

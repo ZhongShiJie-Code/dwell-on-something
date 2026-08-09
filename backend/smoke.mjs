@@ -23,11 +23,11 @@ const json = (body, method = 'POST') => ({
 
 const health = await call('health');
 assert.equal(health.ok, true);
-assert.equal(health.version, '0.4.4');
+assert.equal(health.version, '0.4.5');
 
 const status = await call('status');
 assert.equal(status.alive, true);
-assert.equal(status.version, '0.4.4');
+assert.equal(status.version, '0.4.5');
 
 const context = await call('context');
 assert.equal(context.ok, true);

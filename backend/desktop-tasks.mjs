@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const profileRoot = path.resolve(process.env.DWELL_CLAUDE_PROFILE || path.join(os.homedir(), 'Library/Application Support/Claude-3p'));
 const explicitTaskFile = process.env.DWELL_CLAUDE_TASKS_FILE || '';
 const controlBridge = process.env.DWELL_DESKTOP_TASKS_BRIDGE || '';
+const taskStateDir = path.resolve(process.env.DWELL_TASK_STATE_DIR || path.join(os.homedir(), 'Library/Application Support/dwell/task-runs'));
 
 async function firstTaskFile() {
   if (explicitTaskFile) return explicitTaskFile;
@@ -49,12 +50,27 @@ async function readRaw() {
   } catch { return { file, tasks: [] }; }
 }
 
+async function runStateFor(taskId) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(String(taskId || ''))) return {};
+  try {
+    const state = JSON.parse(await fsp.readFile(path.join(taskStateDir, `${taskId}.json`), 'utf8'));
+    if (['queued', 'running'].includes(state.status) && Number(state.pid) > 0) {
+      try { process.kill(Number(state.pid), 0); }
+      catch { return { ...state, status: 'failed', result: 'failed', summary: '上次运行已中断' }; }
+    }
+    return state;
+  }
+  catch { return {}; }
+}
+
 export async function listDesktopTasks() {
   const raw = await readRaw();
   const items = [];
   for (const task of raw.tasks) {
     if (!task || !task.id) continue;
     const detail = await descriptionFor(task.filePath);
+    const runState = await runStateFor(task.id);
+    const running = ['queued', 'running'].includes(runState.status);
     items.push({
       id: String(task.id),
       name: detail.name || String(task.id),
@@ -62,8 +78,10 @@ export async function listDesktopTasks() {
       enabled: task.enabled !== false,
       schedule: scheduleFor(task),
       model: task.model || '',
-      lastRunAt: task.lastRunAt || null,
-      lastResult: task.lastResult || task.lastRunResult || 'unknown',
+      lastRunAt: runState.completedAt || runState.startedAt || task.lastRunAt || null,
+      lastResult: running ? 'running' : (runState.result || task.lastResult || task.lastRunResult || 'unknown'),
+      running,
+      runSummary: runState.summary || runState.error || '',
     });
   }
   return {
@@ -83,13 +101,17 @@ export async function controlDesktopTask(action, taskId) {
   if (!task) return { ok: false, status: 404, error: 'task_not_found' };
   if (!controlBridge || !fs.existsSync(controlBridge)) return { ok: false, status: 503, error: 'desktop_control_unavailable' };
   try {
-    const { stdout } = await execFileAsync(controlBridge, [JSON.stringify({ action, task_id: task.id })], {
+    const command = controlBridge.endsWith('.mjs') ? process.execPath : controlBridge;
+    const args = controlBridge.endsWith('.mjs')
+      ? [controlBridge, JSON.stringify({ action, task_id: task.id })]
+      : [JSON.stringify({ action, task_id: task.id })];
+    const { stdout } = await execFileAsync(command, args, {
       timeout: 45_000,
       maxBuffer: 2 * 1024 * 1024,
     });
     const result = JSON.parse(stdout || '{}');
     if (!result.ok) return { ok: false, status: 502, error: result.error || 'desktop_control_failed' };
-    return { ok: true, action, task_id: task.id, result };
+    return { ...result, ok: true, action, task_id: task.id };
   } catch (error) {
     return { ok: false, status: 502, error: 'desktop_control_failed', detail: error.message };
   }

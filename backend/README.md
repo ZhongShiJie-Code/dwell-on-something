@@ -33,9 +33,8 @@ cd backend
 DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量中保存' npm start
 ```
 
-桌面任务控制桥的最小协议是：服务端以单个 JSON 参数调用 `DWELL_DESKTOP_TASKS_BRIDGE`，参数形如
-`{"action":"run|pause|resume","task_id":"..."}`；桥接程序必须在确认 Claude Desktop 自身界面完成操作后输出
-`{"ok":true}`，失败则输出 `{"ok":false,"error":"..."}`。没有经过真实 UI 验收的桥接程序不要配置到生产服务。
+仓库内置受控任务桥 `backend/desktop-task-bridge.mjs`。服务端用单个 JSON 参数调用它，格式为
+`{"action":"run|pause|resume","task_id":"..."}`。暂停/恢复会先备份再更新 Claude Desktop 的任务定义；立即运行优先调用任务文件明确声明的白名单主机工具或脚本，并把运行中/成功/失败状态写入 Mac 本地状态目录。不要把任务令牌或凭据写进任务说明。
 
 ## 环境变量
 
@@ -46,13 +45,16 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 | `DWELL_WORKSPACE` | 仓库根目录 | Claude Code 和仓库页工作的目录 |
 | `DWELL_DATA_DIR` | `backend/data` | 本地 JSON/JSONL、日报和上传文件 |
 | `DWELL_CLAUDE_BIN` | `claude` | Claude Code CLI 可执行文件路径 |
+| `DWELL_CLAUDE_MODEL` | 空 | 可选的 Claude Code 实际模型覆盖；留空使用 Mac CLI 默认模型 |
 | `DWELL_CLAUDE_TIMEOUT_MS` | `900000` | 单次主助手请求最长等待时间（毫秒） |
 | `DWELL_AUTH_TOKEN` | 空 | 手机访问令牌；设置后在 APK 连接页填写 |
 | `DWELL_CLAUDE_PROFILE` | `~/Library/Application Support/Claude-3p` | Claude Desktop 任务读取根目录 |
-| `DWELL_CLAUDE_TASKS_FILE` | 自动发现 | 指定 `scheduled-tasks.json` 的只读路径 |
-| `DWELL_DESKTOP_TASKS_BRIDGE` | 空 | 受控桌面任务桥可执行文件；未配置时手机端只读并禁用操作按钮 |
+| `DWELL_CLAUDE_TASKS_FILE` | 自动发现 | 指定 Claude Desktop 的 `scheduled-tasks.json` |
+| `DWELL_CLAUDE_HISTORY_ROOT` | `~/.claude` | Mac Claude Code 会话历史目录 |
+| `DWELL_DESKTOP_TASKS_BRIDGE` | 空 | 受控桌面任务桥路径；建议指向仓库内的 `backend/desktop-task-bridge.mjs` |
 | `DWELL_HEALTH_TOKEN` | 自动生成 | 快捷指令上传健康数据的独立令牌 |
-| `DWELL_CLAUDE_BARE` | `1` | 跳过 hooks/MCP 启动等待，适合手机后端；设为 `0` 才加载本机 hooks/MCP |
+| `DWELL_CLAUDE_SAFE_MODE` | `1` | 禁用易卡住的自定义 hooks/MCP，但保留 Claude Code 内置文件与代码工具 |
+| `DWELL_CLAUDE_BARE` | `0` | 极简 API-key 模式；通常不要开启，开启后不会读取 OAuth/钥匙串 |
 | `DWELL_GONG_MODEL` | `haiku` | 「另一位」独立会话使用的 Claude Code 模型 |
 | `DWELL_PERMISSION_MODE` | `acceptEdits` | Claude Code 权限模式 |
 | `DWELL_VAPID_EMAIL` | `mailto:dwell@localhost` | Web Push 的 VAPID 联系地址 |
@@ -62,7 +64,7 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 ## 已接入的真实能力
 
 - Claude Code CLI `stream-json` 流式回复、思考、工具调用、停止、继续会话和模型/effort 设置
-- 会话列表、重命名、收纳、新窗口、消息历史和增量事件轮询；每个窗口有独立消息和 Claude 会话
+- 会话列表、重命名、收纳、新窗口、消息历史和增量事件轮询；同时读取 Mac `~/.claude` 的真实 Claude Code 会话，打开后可继续原会话
 - 图片会落到受限上传目录再交给本机 Claude Code；大文件分块上传完成后才加入当前消息
 - 待办（日常两栏）、日历事件/重复/重要日子/心情、你的日记、悄悄话
 - 共读书架（把 Markdown 放入 `backend/data/books/`）、阅读进度和段落批注楼
@@ -71,7 +73,7 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 - 健康数据 `POST /api/health` 鉴权接收、快照展示；健康页可复制上传网址和独立令牌
 - 浏览器 Web Push，以及供 Android 原生后台任务读取的新消息接口
 - 本机用量记录、当前上下文估算、工作区项目、工具权限和项目 MCP 连接器状态
-- Claude Desktop 定时任务只读列表：名称、说明、周期、启用状态、最近运行时间和结果；暂停、恢复、立即运行只有配置并通过自检的 Mac 桥接程序才会启用，服务端不会直接改写 `scheduled-tasks.json`
+- Claude Desktop 定时任务：名称、说明、周期、启用状态、最近运行时间和结果；配置内置桥后可暂停、恢复和立即运行，并在页面显示实时状态
 - OpenAI、OpenRouter、Anthropic 兼容的备用模型通道，含真实最小请求测试和图片输入
 - 夜间唤醒开关、每天最多两次、间隔和安静时间限制；可从设置手动重新唤醒
 - 日报读取 `backend/data/news/日报-YYYY-MM-DD.md`；`npm run news` 抓 RSS 生成一份，设置 `DWELL_NEWS_USE_CLAUDE=1` 可让本机 Claude Code 改写

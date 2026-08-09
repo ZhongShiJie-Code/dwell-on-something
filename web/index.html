@@ -581,14 +581,15 @@ html[data-theme="dark"] .composer {
   /* ============ 侧边栏 ============ */
   #drawerWrap { position: fixed; inset: 0; z-index: 40; display: none; }
   #drawerWrap.open { display: block; }
-  #drawerWrap .shade { position: absolute; inset: 0; background: var(--overlay); opacity: 0; transition: opacity .22s; }
+  #drawerWrap .shade { position: absolute; inset: 0; background: var(--overlay); opacity: 0; transition: opacity .2s ease; }
   #drawerWrap.show .shade { opacity: 1; }
   #drawer {
     position: absolute; top: 0; bottom: 0; left: 0; width: min(84vw, 496px);
     background: var(--bg); display: flex; flex-direction: column;
     padding: calc(16px + env(safe-area-inset-top)) 0 calc(14px + env(safe-area-inset-bottom));
-    transform: translateX(-102%); transition: transform .24s ease;
+    transform: translate3d(-102%,0,0); transition: transform .2s ease;
     box-shadow: 4px 0 24px rgba(0,0,0,.12);
+    touch-action: pan-y; will-change: auto;
   }
   #drawerWrap.show #drawer { transform: none; }
   .brand {
@@ -1544,6 +1545,8 @@ html[data-theme="dark"] .note { color: #2f2b26; box-shadow: 0 3px 12px rgba(0,0,
   .task-meta { display: flex; flex-wrap: wrap; gap: 7px 13px; color: var(--dim); font-size: 12.5px; margin-top: 10px; }
   .task-status.on { color: var(--green); }
   .task-status.off { color: var(--dim); }
+  .task-status.running { color: var(--accent); }
+  .task-run-summary { margin-top: 9px; color: var(--dim); font-size: 12.5px; line-height: 1.55; }
   .task-actions { display: flex; gap: 8px; margin-top: 13px; }
   .task-actions button { min-height: 36px; padding: 7px 13px; border-radius: 10px; background: var(--bg); color: inherit; font-size: 13px; }
   .task-actions button:active { transform: scale(.98); }
@@ -2482,7 +2485,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         await new Promise(resolve => setTimeout(resolve, 700));
         fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
       }
-      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.4', events: fresh });
+      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.5', events: fresh });
     }
     if (p === 'api/send' && method === 'POST') {
       const data = parseBody(init);
@@ -4306,13 +4309,25 @@ box.addEventListener('input', () => {
   box.style.height = Math.min(box.scrollHeight, 160) + 'px';
 });
 let speechRecognition = null;
+let nativeSpeechListening = false;
 document.getElementById('micBtn').onclick = () => {
   const mic = document.getElementById('micBtn');
   if (speechRecognition) { speechRecognition.stop(); return; }
   if (window.Android?.startVoiceInput) {
+    if (nativeSpeechListening) {
+      try { window.Android.stopVoiceInput?.(); } catch {}
+      nativeSpeechListening = false;
+      mic.classList.remove('listening');
+      return;
+    }
+    nativeSpeechListening = true;
     mic.classList.add('listening');
     try { window.Android.startVoiceInput(); }
-    catch { mic.classList.remove('listening'); note('（没能打开系统语音输入）', 'err'); }
+    catch {
+      nativeSpeechListening = false;
+      mic.classList.remove('listening');
+      note('（没能启动语音输入）', 'err');
+    }
     return;
   }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -4333,7 +4348,18 @@ document.getElementById('micBtn').onclick = () => {
   rec.onend = () => { speechRecognition = null; mic.classList.remove('listening'); refreshSend(); };
   try { rec.start(); } catch { speechRecognition = null; mic.classList.remove('listening'); note('（语音识别正在使用，请稍后再试）'); }
 };
+window.onNativeSpeechReady = () => {
+  nativeSpeechListening = true;
+  document.getElementById('micBtn').classList.add('listening');
+};
+window.onNativeSpeechProcessing = () => document.getElementById('micBtn').classList.add('listening');
+window.onNativeSpeechPartial = (text) => {
+  if (!text) return;
+  box.value = String(text);
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+};
 window.onNativeSpeechResult = (text) => {
+  nativeSpeechListening = false;
   document.getElementById('micBtn').classList.remove('listening');
   if (text) {
     box.value = String(text);
@@ -4341,7 +4367,15 @@ window.onNativeSpeechResult = (text) => {
     box.focus();
   }
 };
-window.onNativeSpeechCancelled = () => document.getElementById('micBtn').classList.remove('listening');
+window.onNativeSpeechCancelled = () => {
+  nativeSpeechListening = false;
+  document.getElementById('micBtn').classList.remove('listening');
+};
+window.onNativeSpeechError = (message) => {
+  nativeSpeechListening = false;
+  document.getElementById('micBtn').classList.remove('listening');
+  note('（' + (message || '语音识别没有成功') + '）', 'err');
+};
 
 const footerEl = document.querySelector('footer');
 let kbShift = 0, kbGap = 0;
@@ -4424,7 +4458,11 @@ new ResizeObserver(() => {
 
 /* ---------- 抽屉 / 弹层 ---------- */
 const drawerWrap = document.getElementById('drawerWrap');
+const drawerEl = document.getElementById('drawer');
+const drawerShade = drawerWrap.querySelector('.shade');
+let drawerMotion = null;
 function openDrawer() {
+  if (drawerMotion) return drawerMotion.settle(true);
   drawerWrap.classList.add('open');
   requestAnimationFrame(() => drawerWrap.classList.add('show'));
 }
@@ -4432,62 +4470,194 @@ document.getElementById('menuBtn').onclick = async () => {
   openDrawer();
 };
 function closeDrawer() {
+  if (drawerMotion) return drawerMotion.settle(false);
   drawerWrap.classList.remove('show');
-  setTimeout(() => drawerWrap.classList.remove('open'), 240);
+  setTimeout(() => drawerWrap.classList.remove('open'), 280);
 }
-const drawerEl = document.getElementById('drawer');
-const drawerShade = drawerWrap.querySelector('.shade');
-let dg = null;
-function drawerWidth() { return drawerEl.getBoundingClientRect().width || 300; }
-function drawerFollow(px) {          // px: 抽屉右边缘露出多少（0~宽度）
-  const w = drawerWidth();
-  const shown = Math.max(0, Math.min(w, px));
-  drawerEl.style.transition = 'none';
-  drawerShade.style.transition = 'none';
-  drawerEl.style.transform = 'translateX(' + (shown - w) + 'px)';
-  drawerShade.style.opacity = (shown / w).toFixed(3);
-}
-function drawerRelease(shown) {
-  drawerEl.style.transition = '';
-  drawerShade.style.transition = '';
-  drawerEl.style.transform = '';
-  drawerShade.style.opacity = '';
-  if (shown > drawerWidth() * 0.4) {
-    drawerWrap.classList.add('open');
-    requestAnimationFrame(() => drawerWrap.classList.add('show'));
-  } else {
-    closeDrawer();
+
+class DrawerMotion {
+  constructor(wrap, panel, shade) {
+    this.wrap = wrap;
+    this.panel = panel;
+    this.shade = shade;
+    this.drag = null;
+    this.frame = 0;
+    this.animationId = 0;
+    this.shown = 0;
+    this.suppressClickUntil = 0;
+    panel.addEventListener('pointerdown', event => this.pointerDown(event), true);
+    document.addEventListener('pointerdown', event => {
+      if (!wrap.classList.contains('open') && event.pointerType !== 'touch' && event.clientX <= 24) {
+        this.start(event.clientX, event.clientY, event.pointerId, 'pointer', false);
+      }
+    }, true);
+    window.addEventListener('pointermove', event => this.pointerMove(event), { passive: false });
+    window.addEventListener('pointerup', event => this.pointerEnd(event), { passive: false });
+    window.addEventListener('pointercancel', event => this.pointerEnd(event), { passive: false });
+    panel.addEventListener('touchstart', event => this.touchStart(event, true), { passive: true, capture: true });
+    document.addEventListener('touchstart', event => {
+      if (!wrap.classList.contains('open') && event.touches.length === 1 && event.touches[0].clientX <= 24) {
+        this.touchStart(event, false);
+      }
+    }, { passive: true, capture: true });
+    window.addEventListener('touchmove', event => this.touchMove(event), { passive: false });
+    window.addEventListener('touchend', event => this.touchEnd(event), { passive: false });
+    window.addEventListener('touchcancel', event => this.touchEnd(event), { passive: false });
+    panel.addEventListener('click', event => {
+      if (performance.now() >= this.suppressClickUntil) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+  }
+
+  width() { return this.panel.getBoundingClientRect().width || 300; }
+
+  pointerDown(event) {
+    if (event.pointerType === 'touch' || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    this.start(event.clientX, event.clientY, event.pointerId, 'pointer', true);
+  }
+
+  start(clientX, clientY, id, input, opened) {
+    if (this.drag || (opened && !this.wrap.classList.contains('show'))) return;
+    const current = opened ? this.width() : 0;
+    this.drag = {
+      id, input, opened,
+      startX: clientX,
+      startY: clientY,
+      lastX: clientX,
+      lastY: clientY,
+      startedAt: performance.now(),
+      startShown: current,
+      moved: false,
+    };
+  }
+
+  follow(shown) {
+    const width = this.width();
+    let value = shown;
+    if (value > width) value = width + (value - width) * .16;
+    if (value < 0) value *= .18;
+    this.shown = value;
+    const progress = Math.max(0, Math.min(1, value / width));
+    this.panel.style.transform = `translate3d(${Math.min(0, value - width)}px,0,0)`;
+    this.shade.style.opacity = progress.toFixed(3);
+  }
+
+  pointerMove(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'pointer' || event.pointerId !== drag.id) return;
+    this.update(event.clientX, event.clientY, event);
+  }
+
+  update(clientX, clientY, event) {
+    const drag = this.drag;
+    if (!drag) return;
+    drag.lastX = clientX;
+    drag.lastY = clientY;
+    const dx = clientX - drag.startX;
+    const dy = clientY - drag.startY;
+    if (!drag.moved) {
+      if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
+      if (Math.abs(dy) > Math.abs(dx) + 6) { this.drag = null; return; }
+      drag.moved = true;
+      this.wrap.classList.add('open');
+      if (drag.opened) this.wrap.classList.add('show');
+      this.panel.style.transition = 'none';
+      this.shade.style.transition = 'none';
+      this.panel.style.willChange = 'transform';
+      if (drag.input === 'pointer') {
+        try { this.panel.setPointerCapture(event.pointerId); } catch {}
+      }
+    }
+    if (!this.frame) {
+      this.frame = requestAnimationFrame(() => {
+        this.frame = 0;
+        if (this.drag === drag) this.follow(drag.startShown + (drag.lastX - drag.startX));
+      });
+    }
+    if (event.cancelable) event.preventDefault();
+  }
+
+  pointerEnd(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'pointer' || event.pointerId !== drag.id) return;
+    this.finish(event.clientX, event);
+  }
+
+  finish(clientX, event) {
+    const drag = this.drag;
+    if (!drag) return;
+    this.drag = null;
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    if (!drag.moved) return;
+    const dx = clientX - drag.startX;
+    this.follow(drag.startShown + dx);
+    this.suppressClickUntil = performance.now() + 180;
+    const velocity = dx / Math.max(1, performance.now() - drag.startedAt);
+    const open = drag.opened
+      ? !(dx < -110 || velocity < -.72)
+      : (dx > 110 || velocity > .72);
+    this.settle(open, { fromCurrent: true });
+    if (event.cancelable) event.preventDefault();
+  }
+
+  touchStart(event, opened) {
+    if (this.drag || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    this.start(touch.clientX, touch.clientY, touch.identifier, 'touch', opened);
+  }
+
+  touchPoint(event, id) {
+    return [...event.touches, ...event.changedTouches].find(touch => touch.identifier === id) || null;
+  }
+
+  touchMove(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'touch') return;
+    const touch = this.touchPoint(event, drag.id);
+    if (touch) this.update(touch.clientX, touch.clientY, event);
+  }
+
+  touchEnd(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'touch') return;
+    const touch = this.touchPoint(event, drag.id);
+    this.finish(touch?.clientX ?? drag.lastX, event);
+  }
+
+  settle(open, options = {}) {
+    const id = ++this.animationId;
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    this.drag = null;
+    const width = this.width();
+    const from = options.fromCurrent ? this.shown : (this.wrap.classList.contains('show') ? width : 0);
+    this.wrap.classList.add('open');
+    this.panel.style.transition = 'none';
+    this.shade.style.transition = 'none';
+    this.follow(from);
+    void this.panel.offsetWidth;
+    this.panel.style.willChange = 'transform';
+    this.panel.style.transition = 'transform .2s ease';
+    this.shade.style.transition = 'opacity .2s ease';
+    this.wrap.classList.toggle('show', open);
+    requestAnimationFrame(() => {
+      this.follow(open ? width : 0);
+    });
+    setTimeout(() => {
+      if (id !== this.animationId) return;
+      this.wrap.classList.toggle('show', open);
+      if (!open) this.wrap.classList.remove('open');
+      this.shown = open ? width : 0;
+      this.panel.style.transform = '';
+      this.panel.style.transition = '';
+      this.panel.style.willChange = '';
+      this.shade.style.opacity = '';
+      this.shade.style.transition = '';
+    }, 215);
   }
 }
-document.addEventListener('touchstart', (e) => {
-  const t = e.touches[0];
-  const opened = drawerWrap.classList.contains('show');
-  if (!opened && t.clientX < 30) {
-    dg = { x: t.clientX, y: t.clientY, from: 0, live: false };
-  } else if (opened && !(e.target.closest?.('.nav .item, .drawer-foot'))) {
-    dg = { x: t.clientX, y: t.clientY, from: drawerWidth(), live: false };
-  }
-}, { passive: true });
-document.addEventListener('touchmove', (e) => {
-  if (!dg) return;
-  const t = e.touches[0];
-  const dx = t.clientX - dg.x, dy = t.clientY - dg.y;
-  if (!dg.live) {
-    if (Math.abs(dy) > Math.abs(dx) + 8) { dg = null; return; }   // 想竖着滚，让路
-    if (Math.abs(dx) < 8) return;                                  // 还没看出意图
-    dg.live = true;
-    drawerWrap.classList.add('open');                              // 让它在场，跟着手指走
-  }
-  drawerFollow(dg.from + dx);
-}, { passive: true });
-document.addEventListener('touchend', (e) => {
-  if (!dg) return;
-  if (dg.live) {
-    const t = e.changedTouches[0];
-    drawerRelease(Math.max(0, Math.min(drawerWidth(), dg.from + (t.clientX - dg.x))));
-  }
-  dg = null;
-}, { passive: true });
+
+drawerMotion = new DrawerMotion(drawerWrap, drawerEl, drawerShade);
 const sheets = {
   api: document.getElementById('apiSheet'),
   settings: document.getElementById('settingsSheet'),
@@ -6386,8 +6556,9 @@ function taskDate(value) {
   catch { return String(value); }
 }
 function taskResultLabel(value) {
-  return ({ success: '成功', succeeded: '成功', failed: '失败', skipped: '跳过', unknown: '结果未记录' })[value] || '结果未记录';
+  return ({ running: '运行中', success: '成功', succeeded: '成功', failed: '失败', skipped: '跳过', unknown: '结果未记录' })[value] || '结果未记录';
 }
+let desktopTaskPoll = 0;
 function renderDesktopTasks(data) {
   tasksBody.innerHTML = '';
   const head = document.createElement('div'); head.className = 'sh-head';
@@ -6395,7 +6566,7 @@ function renderDesktopTasks(data) {
   const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = data.source === 'claude-desktop' ? 'Claude Desktop · 只读查看与受控操作' : 'Claude Desktop 未连接';
   head.append(title, sub); tasksBody.appendChild(head);
   const noteEl = document.createElement('div'); noteEl.className = 'task-note';
-  noteEl.textContent = data.control?.available ? '操作会交给 Mac 上的 Claude Desktop 执行，手机不会直接改任务文件。' : '当前只能查看任务。Mac 侧控制桥尚未就绪，暂停、恢复和立即运行会保持禁用，不会假装成功。';
+  noteEl.textContent = data.control?.available ? '操作由 Mac 本地控制桥执行：暂停/恢复会更新 Claude Desktop 任务状态，立即运行会在 Mac 上执行任务。' : '当前只能查看任务。Mac 侧控制桥尚未就绪，暂停、恢复和立即运行会保持禁用，不会假装成功。';
   tasksBody.appendChild(noteEl);
   if (!data.items?.length) { const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = data.source === 'claude-desktop' ? '还没有定时任务' : '没有读到 Claude Desktop 的任务文件'; tasksBody.appendChild(empty); return; }
   data.items.forEach(task => {
@@ -6403,16 +6574,24 @@ function renderDesktopTasks(data) {
     const name = document.createElement('div'); name.className = 'task-title'; name.textContent = task.name || task.id;
     const desc = document.createElement('div'); desc.className = 'task-description'; desc.textContent = task.description || '';
     const meta = document.createElement('div'); meta.className = 'task-meta';
-    const status = document.createElement('span'); status.className = 'task-status ' + (task.enabled ? 'on' : 'off'); status.textContent = task.enabled ? '● 已启用' : '○ 已暂停';
+    const status = document.createElement('span');
+    status.className = 'task-status ' + (task.running ? 'running' : task.enabled ? 'on' : 'off');
+    status.textContent = task.running ? '◉ 运行中' : task.enabled ? '● 已启用' : '○ 已暂停';
     const schedule = document.createElement('span'); schedule.textContent = '周期 · ' + (task.schedule || '未设置');
     const last = document.createElement('span'); last.textContent = '上次 · ' + taskDate(task.lastRunAt);
     const result = document.createElement('span'); result.textContent = '结果 · ' + taskResultLabel(task.lastResult);
     meta.append(status, schedule, last, result);
+    const summary = document.createElement('div'); summary.className = 'task-run-summary'; summary.textContent = task.runSummary || '';
+    summary.hidden = !summary.textContent;
     const actions = document.createElement('div'); actions.className = 'task-actions';
-    const run = document.createElement('button'); run.textContent = '立即运行'; run.disabled = !data.control?.available; run.onclick = () => desktopTaskAction(task.id, 'run', run);
+    const run = document.createElement('button'); run.textContent = task.running ? '运行中…' : '立即运行'; run.disabled = !data.control?.available || task.running; run.onclick = () => desktopTaskAction(task.id, 'run', run);
     const toggle = document.createElement('button'); toggle.textContent = task.enabled ? '暂停' : '恢复'; toggle.disabled = !data.control?.available; toggle.onclick = () => desktopTaskAction(task.id, task.enabled ? 'pause' : 'resume', toggle);
-    actions.append(run, toggle); card.append(name, desc, meta, actions); tasksBody.appendChild(card);
+    actions.append(run, toggle); card.append(name, desc, meta, summary, actions); tasksBody.appendChild(card);
   });
+  clearTimeout(desktopTaskPoll);
+  if (data.items?.some(task => task.running) && sheets.tasks.classList.contains('open')) {
+    desktopTaskPoll = setTimeout(loadDesktopTasks, 3000);
+  }
 }
 async function loadDesktopTasks() {
   try {
@@ -6429,6 +6608,7 @@ async function desktopTaskAction(id, action, button) {
   try {
     const r = await fetch('api/desktop-tasks/' + encodeURIComponent(id) + '/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || 'Mac 端没有确认');
+    if (action === 'run') note('（任务已交给 Mac 运行）');
     await loadDesktopTasks();
   } catch (error) { note('（定时任务没有执行：' + (error.message || '请检查 Mac 端') + '）', 'err'); button.disabled = false; }
 }
@@ -7566,6 +7746,12 @@ function renderChats() {
     const time = document.createElement('span');
     time.textContent = chatTime(item.last || item.created);
     meta.appendChild(time);
+    if (item.sourceLabel) {
+      const badge = document.createElement('span');
+      badge.className = 'chat-row-badge';
+      badge.textContent = item.sourceLabel;
+      meta.appendChild(badge);
+    }
     if (item.current) {
       const badge = document.createElement('span');
       badge.className = 'chat-row-badge';
@@ -7582,6 +7768,10 @@ function renderChats() {
     row.append(select, copy);
     row.onclick = () => {
       if (chatManaging) {
+        if (String(item.id || '').startsWith('claude:')) {
+          note('（先打开这条 Mac 会话，再进行归档）');
+          return;
+        }
         if (selectedChats.has(item.id)) selectedChats.delete(item.id);
         else selectedChats.add(item.id);
         renderChats();
