@@ -44,7 +44,7 @@ const CLAUDE_BARE = process.env.DWELL_CLAUDE_BARE !== '0';
 const GONG_MODEL = process.env.DWELL_GONG_MODEL || 'haiku';
 const PERMISSION_MODE = process.env.DWELL_PERMISSION_MODE || 'acceptEdits';
 const AUTH_TOKEN = process.env.DWELL_AUTH_TOKEN || '';
-const SERVER_VERSION = '0.4.2';
+const SERVER_VERSION = '0.4.3';
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_TEXT = 600_000;
 const MAX_UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -418,14 +418,14 @@ async function load() {
   if (active?.archived) {
     active = chats.find(chat => !chat.archived);
     if (!active) {
-      active = { id: id('chat'), name: 'ShiJie', created: now(), last: now(), preview: '', current: true, archived: false, sessionId: null };
-      chats.unshift(active);
+      active = chats.find(chat => chat.id === state.activeChatId) || chats[0];
+      state.armed = true;
     }
-    state.activeChatId = active.id;
+    if (active) state.activeChatId = active.id;
   }
   if (active && !active.sessionId && state.sessionId) active.sessionId = state.sessionId;
-  state.sessionId = active?.sessionId || null;
-  chats = chats.map(chat => ({ ...chat, current: chat.id === state.activeChatId }));
+  state.sessionId = state.armed ? null : (active?.sessionId || null);
+  chats = chats.map(chat => ({ ...chat, current: !state.armed && chat.id === state.activeChatId }));
   const legacyChatId = chats.find(chat => chat.id === 'main')?.id || state.activeChatId;
   let migratedMessages = false;
   messages = messages.map(message => {
@@ -999,15 +999,17 @@ async function wakeTick() {
 
 async function startTurn(text, attachments = [], options = {}) {
   if (activeRun) { activeRun.superseded = true; stopRun(); }
+  const userText = String(text || '').trim();
   if (state.armed) {
     state.armed = false;
     state.sessionId = null;
     state.activeChatId = id('chat');
     chats = chats.map(chat => ({ ...chat, current: false }));
-    chats.unshift({ id: state.activeChatId, name: 'ShiJie', created: now(), last: now(), preview: '', current: true, archived: false, sessionId: null });
+    const firstLine = userText.split(/\r?\n/).find(Boolean) || '新会话';
+    const name = firstLine.replace(/\s+/g, ' ').trim().slice(0, 42) || '新会话';
+    chats.unshift({ id: state.activeChatId, name, created: now(), last: now(), preview: '', current: true, archived: false, sessionId: null });
     emit({ type: 'system', subtype: 'newchat', text: '（新窗口开好了）' });
   }
-  const userText = String(text || '').trim();
   const runnerText = options.webSearch
     ? `${userText || '请看看附件。'}\n\n[用户已开启 Web search。需要最新或外部信息时，请使用可用的网页搜索工具并说明来源；如果当前通道没有搜索工具，请明确说不能实时搜索。]`
     : userText;
@@ -1054,10 +1056,17 @@ async function startTurn(text, attachments = [], options = {}) {
   });
 }
 
-function chatItems(scope) {
+function chatItems(scope = 'all') {
+  const normalizedScope = scope === 'box' ? 'archived' : scope;
+  const populatedChats = new Set(messages.map(message => message.chatId).filter(Boolean));
   return chats
-    .filter(chat => scope === 'box' ? chat.archived : !chat.archived)
-    .map(chat => ({ ...chat, current: chat.id === state.activeChatId }));
+    .filter(chat => {
+      if (normalizedScope === 'live' && chat.archived) return false;
+      if (normalizedScope === 'archived' && !chat.archived) return false;
+      return !!chat.preview || populatedChats.has(chat.id) || (!state.armed && chat.id === state.activeChatId);
+    })
+    .sort((a, b) => Number(b.last || b.created || 0) - Number(a.last || a.created || 0))
+    .map(chat => ({ ...chat, current: !state.armed && chat.id === state.activeChatId }));
 }
 
 function currentMessages(before, limit) {
@@ -1201,32 +1210,58 @@ async function handleApi(req, res, url, origin) {
   if (route === 'tool-access' && method === 'GET') return ok(res, { ok: true, mode: state.toolAccess || 'Auto', items: ['Auto', 'Ask', 'Plan'] }, origin);
   if (route === 'tool-access' && method === 'POST') { const data = await bodyJson(req); const mode = ['Auto', 'Ask', 'Plan'].includes(data.mode) ? data.mode : 'Auto'; state.toolAccess = mode; await persistAll(); return ok(res, { ok: true, mode, items: ['Auto', 'Ask', 'Plan'] }, origin); }
   if (route === 'connectors' && method === 'GET') return ok(res, { ok: true, items: await connectorItems() }, origin);
-  if (route === 'newchat' && method === 'POST') { const data = await bodyJson(req); state.armed = !!data.arm; if (!state.armed) state.sessionId = activeChatRecord()?.sessionId || null; await persistAll(); return ok(res, { ok: true, armed: state.armed }, origin); }
-  if (route === 'chats' && method === 'GET') return ok(res, { ok: true, items: chatItems(url.searchParams.get('scope') || 'live') }, origin);
+  if (route === 'newchat' && method === 'POST') {
+    const data = await bodyJson(req);
+    const arm = !!data.arm;
+    if (arm && activeRun) { activeRun.superseded = true; stopRun(); }
+    state.armed = arm;
+    state.sessionId = arm ? null : (activeChatRecord()?.sessionId || null);
+    chats = chats.map(chat => ({ ...chat, current: !arm && chat.id === state.activeChatId }));
+    await persistAll();
+    return ok(res, { ok: true, armed: state.armed }, origin);
+  }
+  if (route === 'chats' && method === 'GET') return ok(res, { ok: true, items: chatItems(url.searchParams.get('scope') || 'all'), armed: !!state.armed }, origin);
   if (route === 'chats' && method === 'POST') {
-    const data = await bodyJson(req); const target = data.id === 'CURRENT' ? state.activeChatId : data.id; const chat = chats.find(item => item.id === target);
-    if (data.action === 'rename' && chat) chat.name = String(data.name || '').slice(0, 80);
-    if (data.action === 'archive' && chat) {
-      chat.archived = !!data.on;
-      if (chat.archived && chat.id === state.activeChatId) {
-        if (activeRun?.chatId === chat.id) { activeRun.superseded = true; stopRun(); }
-        let next = chats.find(item => !item.archived && item.id !== chat.id);
-        if (!next) {
-          next = { id: id('chat'), name: 'ShiJie', created: now(), last: now(), preview: '', current: true, archived: false, sessionId: null };
-          chats.unshift(next);
-        }
-        state.activeChatId = next.id;
-        state.sessionId = next.sessionId || null;
-        chats = chats.map(item => ({ ...item, current: item.id === next.id }));
+    const data = await bodyJson(req);
+    const target = data.id === 'CURRENT' ? state.activeChatId : String(data.id || '');
+    const chat = chats.find(item => item.id === target);
+    const results = [];
+    const setArchived = (item, archived) => {
+      if (!item) return false;
+      item.archived = archived;
+      item.last = Math.max(Number(item.last || 0), now());
+      if (archived && item.id === state.activeChatId && !state.armed) {
+        if (activeRun?.chatId === item.id) { activeRun.superseded = true; stopRun(); }
+        state.armed = true;
+        state.sessionId = null;
+      }
+      return true;
+    };
+
+    if (data.action === 'rename' && chat) {
+      const name = String(data.name || '').trim().slice(0, 80);
+      if (name) chat.name = name;
+    }
+    if (data.action === 'archive') setArchived(chat, data.on === undefined ? true : !!data.on);
+    if (data.action === 'restore') setArchived(chat, false);
+    if (data.action === 'bulkArchive' || data.action === 'bulkRestore') {
+      const archived = data.action === 'bulkArchive';
+      const ids = [...new Set((Array.isArray(data.ids) ? data.ids : []).map(value => String(value || '')).filter(Boolean))].slice(0, 200);
+      for (const chatId of ids) {
+        const item = chats.find(candidate => candidate.id === chatId);
+        const success = setArchived(item, archived);
+        results.push({ id: chatId, ok: success, error: success ? '' : 'not_found' });
       }
     }
-    if (data.action === 'switch' && chat && !chat.archived) {
+    if (data.action === 'switch' && chat) {
       if (activeRun && activeRun.chatId !== chat.id) { activeRun.superseded = true; stopRun(); }
+      state.armed = false;
       state.activeChatId = chat.id;
       state.sessionId = chat.sessionId || null;
-      chats = chats.map(item => ({ ...item, current: item.id === chat.id }));
     }
-    await persistAll(); return ok(res, { ok: true, items: chatItems('live') }, origin);
+    chats = chats.map(item => ({ ...item, current: !state.armed && item.id === state.activeChatId }));
+    await persistAll();
+    return ok(res, { ok: true, armed: !!state.armed, results, items: chatItems('all') }, origin);
   }
   if (route === 'notes' && method === 'GET') return ok(res, notes, origin);
   if (route === 'notes' && method === 'POST') { const data = await bodyJson(req); if (data.action === 'add') (notes[data.who === 'gu' ? 'gu' : 'her'] ||= []).unshift({ id: id('note'), who: data.who, text: String(data.text || '').slice(0, 800), at: now(), boxed: false }); if (data.action === 'box') { const list = notes[data.who] || []; const item = list.find(x => x.id === data.id); if (item) item.boxed = !item.boxed; } if (data.action === 'del') notes.her = notes.her.filter(x => x.id !== data.id); await persistAll(); return ok(res, notes, origin); }

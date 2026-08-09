@@ -243,7 +243,7 @@ html[data-theme="dark"] .glass,
   /* ============ 顶栏（悬浮玻璃，消息从底下滑过去） ============ */
   header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 20;
-    padding: 10px 3px 22px; padding-top: calc(10px + env(safe-area-inset-top));
+    padding: 10px 14px 22px; padding-top: calc(10px + env(safe-area-inset-top));
     display: flex; align-items: center; gap: 8px;
     justify-content: space-between;
     
@@ -269,6 +269,15 @@ html[data-theme="dark"] .glass,
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+  .header-actions { display: flex; align-items: center; gap: 7px; }
+  #newChatBtn {
+    width: 32px; height: 32px; margin-right: 2px;
+    background: var(--text); color: var(--bg);
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  }
+  #newChatBtn .ic { width: 18px; height: 18px; }
+  #dotsBtn .ic { width: 23px; height: 23px; transform: rotate(90deg); }
+  #newChatBtn:active, #dotsBtn:active, #menuBtn:active { transform: scale(.94); }
   .title { display: none; }
   .title h1 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
   .title .sub { font-size: 12px; color: var(--dim); line-height: 1.2; }
@@ -658,6 +667,28 @@ html[data-theme="dark"] .composer {
     display: flex; flex-direction: column;
     animation: rise .22s ease;
     will-change: transform;
+  }
+  .sheetWrap.motion-sheet .sheet {
+    height: var(--sheet-height, calc(100dvh - 48px));
+    max-height: var(--sheet-height, calc(100dvh - 48px));
+    min-height: 0;
+    border-radius: 28px 28px 0 0;
+    overflow: hidden;
+    animation: none;
+    touch-action: pan-y;
+    box-shadow: 0 -2px 20px rgba(40, 38, 34, .1), inset 0 1px 0 rgba(255,255,255,.5);
+    transform: translate3d(0, var(--sheet-offset, 0px), 0);
+  }
+  .sheetWrap.motion-sheet.dragging .sheet { transition: none !important; will-change: transform; }
+  .sheetWrap.motion-sheet:not(.expanded) .sheet .body { overflow-y: hidden; }
+  .sheetWrap.motion-sheet.expanded .sheet .body { overflow-y: auto; }
+  .sheetWrap.motion-sheet .sheet, .sheetWrap.motion-sheet .sheet * {
+    -webkit-user-select: none; user-select: none;
+  }
+  .sheetWrap.motion-sheet .sheet input,
+  .sheetWrap.motion-sheet .sheet textarea,
+  .sheetWrap.motion-sheet .sheet [contenteditable="true"] {
+    -webkit-user-select: text; user-select: text;
   }
   @media (min-width: 700px) { .sheet { border-radius: 24px; max-height: 80vh; } }
   .sheet::after {   /* 往上拽的时候底下不露缝 */
@@ -1638,14 +1669,9 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
 
   /* Add to chat：按 Claude 移动端的卡片密度排版，底部抽屉会在这里复用同一套间距。 */
   #addSheet .sheet {
-    height: calc(100dvh - max(env(safe-area-inset-top) + 12px, 48px));
-    max-height: calc(100dvh - max(env(safe-area-inset-top) + 12px, 48px)); min-height: 0;
     background: var(--card); border-radius: 34px 34px 0 0; overflow: hidden;
     box-shadow: 0 -2px 18px rgba(40, 38, 34, .08);
-    touch-action: pan-y;
-    transition: transform .3s cubic-bezier(.22, 1, .36, 1);
   }
-  #addSheet.dragging .sheet { transition: none !important; will-change: transform; }
   #addSheet .sheet, #addSheet .sheet button { user-select: none; -webkit-user-select: none; }
   #addSheet .sheet::after { background: var(--card); }
   #addSheet .grabber {
@@ -1745,41 +1771,95 @@ html[data-theme="dark"] .menuCard {
   .menuCard .mi:active { background: var(--panel); }
   .menuCard .mi .ic { width: 19px; height: 19px; }
   .menuCard .mi.danger { color: var(--red); }
+  .menuCard .mi:disabled { opacity: .38; pointer-events: none; }
 
-  #chatsSheet .sheet { height: 100dvh; max-height: 100dvh; border-radius: 0; }
-  #chatScope { display: flex; align-items: center; gap: 4px; width: auto; padding: 0 4px; color: var(--dim); }
-  #chatScope .sc { font-size: 14.5px; }
-  #chatScope .ic { width: 15px; height: 15px; }
-  
-  .crow {
-    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-    background: var(--glass);
-    -webkit-backdrop-filter: blur(18px) saturate(1.6);
-    backdrop-filter: blur(18px) saturate(1.6);
-    border: 1px solid rgba(255, 255, 255, .45);
-    box-shadow: 0 1px 5px rgba(0,0,0,.045);
-    border-radius: 15px; padding: 11px 14px; margin-bottom: 7px;
+  #chatsSheet { z-index: 70; }
+  #chatsSheet .sheet {
+    height: 100dvh; max-height: 100dvh; max-width: none; border-radius: 0;
+    background: var(--bg);
   }
-  @media (prefers-color-scheme: dark) {
-html:not([data-theme="light"]) .crow { border-color: rgba(255,255,255,.1); box-shadow: 0 1px 5px rgba(0,0,0,.2); }
-}
-html[data-theme="dark"] .crow { border-color: rgba(255,255,255,.1); box-shadow: 0 1px 5px rgba(0,0,0,.2); }
-  .crow:active { background: color-mix(in srgb, var(--panel) 75%, transparent); }
-  .crow .cmid { flex: 1; min-width: 0; }
-  .crow .cn { font-size: 15px; font-weight: 600; }
-  .crow .cp {
-    font-size: 12.5px; color: var(--dim); margin-top: 2px;
+  #chatsSheet .head {
+    min-height: calc(72px + env(safe-area-inset-top));
+    padding: calc(10px + env(safe-area-inset-top)) 14px 8px;
+  }
+  #chatsSheet .head .ht { display: none; }
+  #chatsSheet .head .hbtn { width: 44px; height: 44px; }
+  #chatsSheet .head .hbtn .ic { width: 27px; height: 27px; }
+  #chatHeadActions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+  #chatHeadActions .hbtn .ic { width: 24px; height: 24px; stroke-width: 1.8; }
+  #chatsContent {
+    padding: 4px 20px calc(112px + env(safe-area-inset-bottom));
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  .chats-title {
+    margin: 0 4px 24px; font-family: var(--serif); font-size: 48px; line-height: 1;
+    font-weight: 600; letter-spacing: -.045em;
+  }
+  .chat-search {
+    height: 62px; border: 1.5px solid color-mix(in srgb, var(--dim) 58%, transparent);
+    border-radius: 17px; display: flex; align-items: center; gap: 13px;
+    padding: 0 17px; margin-bottom: 19px; color: var(--dim); background: var(--bg);
+  }
+  .chat-search .ic { width: 27px; height: 27px; stroke-width: 1.7; }
+  #chatSearch {
+    min-width: 0; flex: 1; border: 0; outline: 0; background: transparent;
+    color: var(--text); font: inherit; font-size: 18px;
+  }
+  #chatSearch::placeholder { color: var(--dim); opacity: .88; }
+  #chatOffline {
+    display: none; margin: -6px 3px 12px; color: var(--dim); font-size: 13px;
+  }
+  #chatOffline.on { display: block; }
+  #chatsBody { display: flex; flex-direction: column; }
+  .chat-row {
+    width: 100%; min-height: 91px; display: flex; align-items: flex-start; gap: 13px;
+    padding: 13px 16px 12px; border-radius: 15px; text-align: left;
+    background: transparent; color: var(--text);
+  }
+  .chat-row:active { background: var(--panel); }
+  .chat-select {
+    display: none; width: 24px; height: 24px; margin-top: 2px; border-radius: 50%;
+    border: 1.5px solid var(--dim); flex: none; align-items: center; justify-content: center;
+  }
+  .chat-select .ic { width: 15px; height: 15px; opacity: 0; }
+  #chatsSheet.managing .chat-select { display: inline-flex; }
+  .chat-row.selected .chat-select { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .chat-row.selected .chat-select .ic { opacity: 1; }
+  .chat-row-copy { flex: 1; min-width: 0; }
+  .chat-row-title {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 19px; line-height: 1.35; font-weight: 470; letter-spacing: -.015em;
   }
-  .crow .ct { font-size: 12.5px; color: var(--dim); flex: none; align-self: flex-start; }
+  .chat-row-meta {
+    display: flex; align-items: center; gap: 8px; margin-top: 3px;
+    color: var(--dim); font-size: 15px; line-height: 1.35;
+  }
+  .chat-row-badge {
+    padding: 1px 7px; border-radius: 999px; background: var(--panel); font-size: 11.5px;
+  }
+  .chat-empty { padding: 56px 8px; text-align: center; color: var(--dim); font-size: 15px; }
+  #chatManageBar {
+    position: absolute; z-index: 2; left: 18px; right: 18px;
+    bottom: calc(17px + env(safe-area-inset-bottom)); display: none;
+    align-items: center; gap: 9px; padding: 9px; border-radius: 20px;
+    background: color-mix(in srgb, var(--card) 92%, transparent);
+    box-shadow: 0 8px 30px rgba(0,0,0,.14); backdrop-filter: blur(18px);
+  }
+  #chatsSheet.managing #chatManageBar { display: flex; }
+  #chatManageCount { flex: 1; padding-left: 10px; font-size: 14px; color: var(--dim); }
+  #chatManageBar button { min-height: 42px; padding: 8px 14px; border-radius: 13px; background: var(--panel); }
+  #chatManageBar button.primary { background: var(--text); color: var(--bg); }
+  #chatFilterMenu { z-index: 90; top: calc(62px + env(safe-area-inset-top)); right: 58px; min-width: 156px; }
+  #chatFilterMenu .mi.on { background: var(--panel); font-weight: 650; }
   #newSession {
     position: absolute; right: 18px; bottom: calc(20px + env(safe-area-inset-bottom));
     background: #2b2a27; color: #faf9f5; border-radius: 999px;
-    padding: 12px 22px; font-size: 15px;
+    min-height: 58px; padding: 13px 23px; font-size: 17px; font-weight: 650;
     display: flex; align-items: center; gap: 7px;
     box-shadow: 0 8px 24px rgba(0,0,0,.18);
   }
-  #newSession .ic { width: 15px; height: 15px; }
+  #newSession .ic { width: 20px; height: 20px; }
+  #chatsSheet.managing #newSession { display: none; }
   @media (prefers-color-scheme: dark) {
 html:not([data-theme="light"]) #newSession { background: #f5f4ef; color: #262624; }
 }
@@ -1790,11 +1870,10 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
 
 <header>
   <button class="iconbtn glass" id="menuBtn" title="打开侧边栏"><span class="ic" data-i="menu"></span></button>
-  <div class="title">
-    <h1>Claude</h1>
-    <div class="sub">Claude Code</div>
+  <div class="header-actions">
+    <button class="iconbtn" id="newChatBtn" title="新会话" aria-label="新会话"><span class="ic" data-i="plus"></span></button>
+    <button class="iconbtn glass" id="dotsBtn" title="更多" aria-label="更多"><span class="ic" data-i="dots"></span></button>
   </div>
-  <button class="iconbtn glass" id="dotsBtn" title="更多"><span class="ic" data-i="ghost"></span></button>
 </header>
 
 <div id="log"></div>
@@ -1831,11 +1910,8 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
 </footer>
 
 <div class="menuCard" id="dotsMenu">
-  <button class="mi" data-act="find"><span class="ic" data-i="search"></span>搜索</button>
-  <button class="mi" data-act="ctx"><span class="ic" data-i="gauge"></span>容量</button>
   <button class="mi" data-act="rename"><span class="ic" data-i="tag"></span>备注</button>
   <button class="mi danger" data-act="archive"><span class="ic" data-i="box"></span>收纳</button>
-  <button class="mi" data-act="settings"><span class="ic" data-i="sliders"></span>设置</button>
 </div>
 
 <!-- 留言板：冰箱门 -->
@@ -1871,7 +1947,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
   <div id="drawer">
     <div class="brand">Claude</div>
     <div class="nav">
-      <button class="item on"><span class="ic" data-i="chat"></span>聊天</button>
+      <button class="item on" id="navChats"><span class="ic" data-i="chat"></span>聊天</button>
       <button class="item" id="navTodo"><span class="ic" data-i="checkSquare"></span>待办</button>
       <button class="item" id="navCal"><span class="ic" data-i="calendar"></span>日历</button>
       <button class="item" id="navWall"><span class="ic" data-i="pen"></span>日记</button>
@@ -1961,15 +2037,36 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
 <div class="sheetWrap page" id="chatsSheet">
   <div class="shade" data-close="chats"></div>
   <div class="sheet tall">
-    <div class="grabber"></div>
     <div class="head">
       <button class="hbtn" id="chatsMenu" title="侧边栏"><span class="ic" data-i="menu"></span></button>
-      <div class="ht">Chat</div>
-      <button class="hbtn" id="chatScope"><span class="sc">全部</span><span class="ic" data-i="chevD"></span></button>
+      <div id="chatHeadActions">
+        <button class="hbtn" id="chatScope" title="筛选会话" aria-label="筛选会话"><span class="ic" data-i="sliders"></span></button>
+        <button class="hbtn" id="chatManage" title="管理会话" aria-label="管理会话"><span class="ic" data-i="listChecks"></span></button>
+      </div>
     </div>
-    <div class="body" id="chatsBody"></div>
+    <div class="body" id="chatsContent">
+      <h1 class="chats-title">Chats</h1>
+      <label class="chat-search">
+        <span class="ic" data-i="search"></span>
+        <input id="chatSearch" type="search" placeholder="Search Chats" autocomplete="off" aria-label="搜索会话">
+      </label>
+      <div id="chatOffline">离线 · 显示最近缓存</div>
+      <div id="chatsBody"></div>
+    </div>
+    <div id="chatManageBar">
+      <span id="chatManageCount">已选 0 项</span>
+      <button id="chatBulkRestore">恢复</button>
+      <button class="primary" id="chatBulkArchive">归档</button>
+      <button id="chatManageCancel">取消</button>
+    </div>
     <button id="newSession"><span class="ic" data-i="plus"></span>New chat</button>
   </div>
+</div>
+
+<div class="menuCard" id="chatFilterMenu">
+  <button class="mi on" data-scope="all">全部</button>
+  <button class="mi" data-scope="live">进行中</button>
+  <button class="mi" data-scope="archived">已归档</button>
 </div>
 
 <div class="sheetWrap" id="ctxSheet">
@@ -2355,7 +2452,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         await new Promise(resolve => setTimeout(resolve, 700));
         fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
       }
-      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.2', events: fresh });
+      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.3', events: fresh });
     }
     if (p === 'api/send' && method === 'POST') {
       const data = parseBody(init);
@@ -2582,6 +2679,7 @@ const ICONS = {
   camera: S('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   clock: S('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
   checkSquare: S('<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'),
+  listChecks: S('<path d="m4 6 1.5 1.5L8 4.5"/><line x1="11" y1="6" x2="21" y2="6"/><path d="m4 12 1.5 1.5L8 10.5"/><line x1="11" y1="12" x2="21" y2="12"/><path d="m4 18 1.5 1.5L8 16.5"/><line x1="11" y1="18" x2="21" y2="18"/>'),
   calendar: S('<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'),
   alarm: S('<circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 14.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/>'),
   refresh: S('<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.6 4.2v4.6h-4.6"/>'),
@@ -3624,12 +3722,27 @@ function renderSaid(msgs) {
   closeGroup(); endThink();
 }
 
-async function loadSaid() {
+function resetConversationView(options = {}) {
+  log.innerHTML = '';
+  guEl = null;
+  turnThink = null;
+  curGroup = null;
+  activeTurnMeta = null;
+  earliestSeq = null;
+  olderBtn = null;
+  loadingOlder = false;
+  thinkStore.length = 0;
+  if (!options.preserveBusy) setBusy(false);
+  syncWelcome();
+}
+
+async function loadSaid(options = {}) {
   try {
     const r = await fetch('api/messages?limit=400', { cache: 'no-store' });
     if (!r.ok) return 0;
     const d = await r.json();
     const msgs = d.msgs || [];
+    if (options.reset) resetConversationView({ preserveBusy: !!options.preserveBusy });
     renderSaid(msgs);
     healEmptyGu();
     if (msgs.length) earliestSeq = msgs[0].seq;
@@ -3688,7 +3801,7 @@ async function loadOlder() {
 }
 
 /* ---------- 事件流 ---------- */
-let cursor = 0, polling = false;
+let cursor = 0, pollToken = 0, pollController = null;
 let armedFresh = false;        // 「新窗口」上膛了没——handle() 要用，所以在这儿先立着
 let uiVer = null;              // 网页那份文件的版本，换了就自己重载
 let pendingVer = null;
@@ -3702,40 +3815,87 @@ function tryReload() {
     if (!cur && !atBottom()) return false;
     sessionStorage.setItem('reopenSheet', cur || '');
     sessionStorage.setItem('skipLock', '1');
+    sessionStorage.setItem('resumeConversation', '1');
   } catch (e) {}
   location.reload();
   return true;
 }
-async function poll() {
-  if (polling) return;
-  polling = true;
+
+function noteServerVersion(version) {
+  if (!version) return;
+  if (uiVer === null) uiVer = version;
+  else if (version !== uiVer) { pendingVer = version; tryReload(); }
+}
+
+async function primeEventStream() {
+  const token = ++pollToken;
+  try { pollController?.abort(); } catch {}
+  pollController = null;
   try {
-    const r = await fetch('api/poll?since=' + cursor, { cache: 'no-store' });
+    const r = await fetch('api/poll?since=0&wait=0', { cache: 'no-store' });
+    const d = await r.json();
+    if (token !== pollToken) return token;
+    cursor = Number(d.next || 0);
+    noteServerVersion(d.ver);
+  } catch {}
+  return token;
+}
+
+async function poll(token = pollToken) {
+  if (token !== pollToken) return;
+  const controller = new AbortController();
+  pollController = controller;
+  try {
+    const r = await fetch('api/poll?since=' + cursor, { cache: 'no-store', signal: controller.signal });
+    if (token !== pollToken) return;
     if (r.status === 401) { location.href = './'; return; }
     const d = await r.json();
-    if (d.ver) {
-      if (uiVer === null) uiVer = d.ver;
-      else if (d.ver !== uiVer) { pendingVer = d.ver; if (tryReload()) return; }
-    }
+    noteServerVersion(d.ver);
     cursor = d.next;
     for (const ev of d.events) handle(ev);
     if (pendingVer && tryReload()) return;
-  } catch {
+  } catch (error) {
+    if (error?.name === 'AbortError' || token !== pollToken) return;
     await new Promise(r => setTimeout(r, 1500));
   } finally {
-    polling = false;
-    poll();
+    if (token === pollToken) {
+      pollController = null;
+      poll(token);
+    }
   }
 }
-// 先把说完的话照着念一遍，游标落在最后一条上；之后的（正在说的那轮）才走事件流
-loadSaid().then((upto) => { if (upto) cursor = upto; poll(); });
+
+async function restartEventStream(options = {}) {
+  const token = await primeEventStream();
+  if (options.loadHistory) await loadSaid({ reset: true, preserveBusy: !!options.preserveBusy });
+  if (token === pollToken) poll(token);
+}
+
+async function initializeChatClient() {
+  let resume = false;
+  try {
+    resume = sessionStorage.getItem('resumeConversation') === '1' || sessionStorage.getItem('skipLock') === '1';
+    sessionStorage.removeItem('resumeConversation');
+  } catch {}
+  if (resume) {
+    await restartEventStream({ loadHistory: true });
+    return;
+  }
+  const opened = await armNewChat({ quiet: true, restart: false });
+  if (!opened) {
+    resetConversationView();
+    setArmed(true);
+    setTitle('Claude');
+  }
+  await restartEventStream();
+}
 
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return;
   if (Date.now() - lastEventAt < 30000) return;
+  if (armedFresh) return;
   try {
-    const upto = await loadSaid();
-    if (upto) cursor = upto;
+    await restartEventStream({ loadHistory: true, preserveBusy: guBusy });
     lastEventAt = Date.now();
   } catch (e) {}
 });
@@ -3753,8 +3913,8 @@ setInterval(calDayWatch, 120000);
 function handle(d) {
   lastEventAt = Date.now();
   if (d.type === 'echo') { if (armedFresh) setArmed(false); addMe(d.text); petSet('thinking'); return; }
-  if (d.type === 'system' && d.subtype === 'newchat') { setArmed(false); log.innerHTML = ''; guEl = null; earliestSeq = null; olderBtn = null; note(d.text); return; }
-  if (d.type === 'system' && d.subtype === 'switched') { setArmed(false); log.innerHTML = ''; guEl = null; earliestSeq = null; olderBtn = null; note(d.text); return; }
+  if (d.type === 'system' && d.subtype === 'newchat') { setArmed(false); resetConversationView({ preserveBusy: true }); return; }
+  if (d.type === 'system' && d.subtype === 'switched') { setArmed(false); resetConversationView({ preserveBusy: true }); return; }
 
   if (d.type === 'stream_event') {
     const ev = d.event || {};
@@ -4078,10 +4238,19 @@ async function stopGu() {
   setBusy(false);
 }
 
-function send() {
+async function send() {
   if (guBusy && !((box.value || '').trim() || attachments.length)) return stopGu();
   const text = box.value.trim();
   if (!text && !attachments.length) return;
+  if (armedFresh) {
+    try {
+      const armed = await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":true}' });
+      if (!armed.ok) throw new Error('new chat rejected');
+    } catch {
+      note('（现在无法连接 Mac，这条消息还没有发送）', 'err');
+      return;
+    }
+  }
   const wasBusy = guBusy;
   if (wasBusy) { try { fetch('api/stop', { method: 'POST' }); } catch (e) {} }
   box.value = '';
@@ -4320,6 +4489,10 @@ const sheets = {
 window.dwellHandleBack = () => {
   const fullCode = document.querySelector('.cbk-full');
   if (fullCode) { fullCode.remove(); return true; }
+  if (document.getElementById('chatFilterMenu')?.classList.contains('open')) {
+    document.getElementById('chatFilterMenu').classList.remove('open');
+    return true;
+  }
   if (document.getElementById('dotsMenu')?.classList.contains('open')) {
     document.getElementById('dotsMenu').classList.remove('open');
     return true;
@@ -4327,6 +4500,10 @@ window.dwellHandleBack = () => {
   const opened = Array.from(document.querySelectorAll('.sheetWrap.open')).pop();
   if (opened) {
     if (opened === sheets.add) closeAddSheet();
+    else if (opened === sheets.chats) {
+      setChatManaging(false);
+      opened.classList.remove('open');
+    }
     else if (opened === sheets.tool && sheetStack.length > 1) { sheetStack.pop(); renderToolSheet(); }
     else if (opened === sheets.model && modelView !== 'main') { modelView = 'main'; renderModelSheet(); }
     else {
@@ -6240,89 +6417,302 @@ document.querySelectorAll('[data-close]').forEach(el => {
   };
 });
 
-function bindSheetDismiss(k, wrap) {
-  const sheet = wrap.querySelector('.sheet');
-  if (!sheet || k === 'add') return;
-  const page = wrap.classList.contains('page');
-  const body = sheet.querySelector('.body');
-  let drag = null;
-  let frame = 0;
-  const reset = () => {
-    if (frame) { cancelAnimationFrame(frame); frame = 0; }
-    sheet.classList.remove('dragging');
-    sheet.style.transition = 'transform .26s cubic-bezier(.22, 1, .36, 1)';
-    sheet.style.transform = '';
-    setTimeout(() => { sheet.style.transition = ''; }, 300);
-  };
-  const doClose = () => {
-    if (frame) { cancelAnimationFrame(frame); frame = 0; }
-    if (k === 'tool') sheetStack = [];
-    wrap.classList.remove('open');
-    sheet.classList.remove('dragging');
-    sheet.style.transform = '';
-    sheet.style.transition = '';
-    if (wrap.classList.contains('page')) openDrawer();
-  };
-  wrap._closeSheet = doClose;
-  sheet.style.touchAction = 'pan-y';
-  const interactive = (target) => target?.closest?.('button,a,input,textarea,select,[contenteditable="true"]');
-  sheet.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (interactive(e.target)) return;
-    if (page && !e.target.closest('.head, .grabber')) return;
-    drag = { id: e.pointerId, y: e.clientY, lastY: e.clientY, started: performance.now(), moved: false, native: false };
-  });
-  sheet.addEventListener('pointermove', (e) => {
-    if (!drag || drag.id !== e.pointerId) return;
-    const dy = e.clientY - drag.y;
-    drag.lastY = e.clientY;
-    if (!drag.moved && Math.abs(dy) < 7) return;
-    if (!drag.moved && !page && body && body.scrollTop > 0) { drag.native = true; return; }
-    if (drag.native) return;
-    if (!drag.moved) {
-      drag.moved = true;
-      try { sheet.setPointerCapture(e.pointerId); } catch {}
-      sheet.classList.add('dragging');
-      sheet.style.transition = 'none';
+class BottomSheetMotion {
+  constructor(key, wrap, options = {}) {
+    this.key = key;
+    this.wrap = wrap;
+    this.panel = wrap.querySelector('.sheet');
+    this.body = this.panel?.querySelector('.body') || null;
+    this.initial = options.initial || 'collapsed';
+    this.state = this.initial;
+    this.offset = 0;
+    this.drag = null;
+    this.frame = 0;
+    this.animationId = 0;
+    this.isOpen = false;
+    this.suppressClickUntil = 0;
+    if (!this.panel) return;
+
+    wrap.classList.add('motion-sheet');
+    wrap._sheetMotion = this;
+    wrap._closeSheet = () => this.close();
+    this.measure();
+    this.applyOffset(this.offsetFor(this.initial));
+    this.syncStateClass(this.initial);
+
+    this.panel.addEventListener('pointerdown', event => this.pointerDown(event), true);
+    window.addEventListener('pointermove', event => this.pointerMove(event), { passive: false });
+    window.addEventListener('pointerup', event => this.pointerEnd(event), { passive: false });
+    window.addEventListener('pointercancel', event => this.pointerEnd(event), { passive: false });
+    this.panel.addEventListener('touchstart', event => this.touchStart(event), { passive: true, capture: true });
+    window.addEventListener('touchmove', event => this.touchMove(event), { passive: false });
+    window.addEventListener('touchend', event => this.touchEnd(event), { passive: false });
+    window.addEventListener('touchcancel', event => this.touchEnd(event), { passive: false });
+    this.panel.addEventListener('click', event => {
+      if (performance.now() >= this.suppressClickUntil) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+
+    this.observer = new MutationObserver(() => {
+      const open = this.wrap.classList.contains('open');
+      if (open && !this.isOpen) this.activate();
+      if (!open && this.isOpen) this.resetAfterClose();
+    });
+    this.observer.observe(this.wrap, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  viewportHeight() {
+    return Math.round(window.visualViewport?.height || window.innerHeight);
+  }
+
+  measure() {
+    const viewport = this.viewportHeight();
+    const topGap = Math.max(48, Math.round((window.visualViewport?.offsetTop || 0) + 48));
+    this.maxHeight = Math.max(300, viewport - topGap);
+    this.collapsedHeight = Math.min(Math.round(viewport * .47), this.maxHeight - 1);
+    this.collapsedOffset = Math.max(0, this.maxHeight - this.collapsedHeight);
+    this.closedOffset = this.maxHeight + 88;
+    this.wrap.style.setProperty('--sheet-height', this.maxHeight + 'px');
+  }
+
+  offsetFor(state) {
+    if (state === 'expanded') return 0;
+    if (state === 'closed') return this.closedOffset;
+    return this.collapsedOffset;
+  }
+
+  applyOffset(value) {
+    let next = Number(value) || 0;
+    if (next < 0) next = Math.max(next / 3, -34);
+    next = Math.min(next, this.closedOffset);
+    this.offset = next;
+    this.wrap.style.setProperty('--sheet-offset', next.toFixed(2) + 'px');
+    const shade = this.wrap.querySelector('.shade');
+    if (shade) {
+      const progress = 1 - Math.max(0, Math.min(1, next / this.closedOffset));
+      shade.style.opacity = String(Math.max(.05, progress));
     }
-    if (!frame) {
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        if (!drag || !drag.moved) return;
-        const nowDy = drag.lastY - drag.y;
-        const shown = nowDy >= 0 ? nowDy : Math.max(nowDy / 3, -34);
-        sheet.style.transform = 'translate3d(0,' + shown.toFixed(2) + 'px,0)';
+  }
+
+  syncStateClass(state) {
+    this.wrap.classList.toggle('expanded', state === 'expanded');
+    this.wrap.dataset.sheetState = state;
+    if (state !== 'expanded' && this.body) this.body.scrollTop = 0;
+  }
+
+  activate(state = this.initial) {
+    this.isOpen = true;
+    this.measure();
+    this.state = state;
+    this.syncStateClass(state);
+    const target = this.offsetFor(state);
+    this.panel.style.transition = 'none';
+    this.applyOffset(Math.min(this.closedOffset, target + 24));
+    requestAnimationFrame(() => this.settle(state, { opening: true }));
+  }
+
+  open(state = this.initial) {
+    if (this.isOpen && this.wrap.classList.contains('open')) {
+      this.settle(state);
+      return;
+    }
+    this.initial = state;
+    this.wrap.classList.add('open');
+  }
+
+  settle(state, options = {}) {
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    const id = ++this.animationId;
+    this.state = state;
+    this.syncStateClass(state);
+    this.wrap.classList.remove('dragging');
+    this.panel.style.transition = 'transform .2s ease';
+    this.applyOffset(this.offsetFor(state));
+    if (state === 'closed') {
+      setTimeout(() => {
+        if (id !== this.animationId) return;
+        this.wrap.classList.remove('open');
+      }, 215);
+      return;
+    }
+    setTimeout(() => {
+      if (id !== this.animationId) return;
+      this.panel.style.transition = '';
+      this.panel.style.willChange = '';
+    }, 225);
+  }
+
+  close() {
+    if (!this.wrap.classList.contains('open')) return;
+    if (this.key === 'tool') sheetStack = [];
+    this.settle('closed');
+  }
+
+  resetAfterClose() {
+    this.isOpen = false;
+    this.animationId++;
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    this.drag = null;
+    this.wrap.classList.remove('dragging', 'expanded');
+    this.panel.style.transition = '';
+    this.panel.style.willChange = '';
+    const shade = this.wrap.querySelector('.shade');
+    if (shade) shade.style.opacity = '';
+    this.measure();
+    this.state = this.initial;
+    this.syncStateClass(this.initial);
+    this.applyOffset(this.offsetFor(this.initial));
+  }
+
+  pointerDown(event) {
+    if (!this.isOpen || event.pointerType === 'touch' || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    this.startDrag(event.clientX, event.clientY, event.target, event.pointerId, 'pointer');
+  }
+
+  startDrag(clientX, clientY, target, id, input) {
+    this.drag = {
+      id,
+      input,
+      startX: clientX,
+      startY: clientY,
+      lastX: clientX,
+      lastY: clientY,
+      startOffset: this.offset,
+      startedAt: performance.now(),
+      state: this.state,
+      inBody: !!target?.closest?.('.body'),
+      moved: false,
+      nativeScroll: false,
+    };
+  }
+
+  pointerMove(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'pointer' || drag.id !== event.pointerId) return;
+    this.updateDrag(event.clientX, event.clientY, event);
+  }
+
+  updateDrag(clientX, clientY, event) {
+    const drag = this.drag;
+    if (!drag) return;
+    drag.lastX = clientX;
+    drag.lastY = clientY;
+    let dx = clientX - drag.startX;
+    let dy = clientY - drag.startY;
+    if (!drag.moved && !drag.nativeScroll) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) > Math.abs(dy) + 6) { this.drag = null; return; }
+      if (drag.state === 'expanded' && drag.inBody && this.body) {
+        const maxScroll = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
+        if ((dy < 0 && this.body.scrollTop < maxScroll - 1) || (dy > 0 && this.body.scrollTop > 0)) {
+          drag.nativeScroll = true;
+          return;
+        }
+      }
+      this.beginDrag(event, drag);
+    } else if (drag.nativeScroll) {
+      if (!(dy > 0 && this.body && this.body.scrollTop <= 0)) return;
+      drag.nativeScroll = false;
+      drag.startX = clientX;
+      drag.startY = clientY;
+      drag.lastX = clientX;
+      drag.lastY = clientY;
+      drag.startOffset = this.offsetFor('expanded');
+      drag.startedAt = performance.now();
+      dx = 0;
+      dy = 0;
+      this.beginDrag(event, drag);
+    }
+    if (!drag.moved) return;
+    if (!this.frame) {
+      this.frame = requestAnimationFrame(() => {
+        this.frame = 0;
+        if (this.drag !== drag || !drag.moved) return;
+        this.applyOffset(drag.startOffset + (drag.lastY - drag.startY));
       });
     }
-    e.preventDefault();
-  });
-  const end = (e) => {
-    if (!drag || drag.id !== e.pointerId) return;
-    const d = drag; drag = null;
-    if (frame) { cancelAnimationFrame(frame); frame = 0; }
-    const dy = e.clientY - d.y;
-    if (!d.moved || d.native) { reset(); return; }
-    const velocity = dy / Math.max(1, performance.now() - d.started);
-    if (dy > Math.max(96, sheet.getBoundingClientRect().height * .18) || velocity > .9) {
-      sheet.style.transition = 'transform .24s cubic-bezier(.4,0,.2,1)';
-      sheet.style.transform = 'translate3d(0,105%,0)';
-      setTimeout(doClose, 250);
-    } else reset();
-    e.preventDefault();
-  };
-  sheet.addEventListener('pointerup', end);
-  sheet.addEventListener('pointercancel', end);
-}
-Object.entries(sheets).forEach(([k, wrap]) => bindSheetDismiss(k, wrap));
+    if (event.cancelable) event.preventDefault();
+  }
 
-/* 防止用户从弹层内拖动时把页面自身带走。 */
-Object.entries(sheets).forEach(([k, wrap]) => {
-  if (k === 'add') return;
-  const sheet = wrap.querySelector('.sheet');
-  sheet?.addEventListener('transitionend', () => {
-    if (!wrap.classList.contains('open')) sheet.style.transform = '';
-  });
+  beginDrag(event, drag) {
+    drag.moved = true;
+    if (drag.input === 'pointer') {
+      try { this.panel.setPointerCapture(event.pointerId); } catch {}
+    }
+    this.wrap.classList.add('dragging');
+    this.panel.style.transition = 'none';
+    this.panel.style.willChange = 'transform';
+  }
+
+  pointerEnd(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'pointer' || drag.id !== event.pointerId) return;
+    this.finishDrag(event.clientY, event);
+  }
+
+  finishDrag(clientY, event) {
+    const drag = this.drag;
+    if (!drag) return;
+    this.drag = null;
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    if (!drag.moved || drag.nativeScroll) return;
+    this.applyOffset(drag.startOffset + (clientY - drag.startY));
+    if (this.panel.contains(document.activeElement)) document.activeElement.blur();
+    this.suppressClickUntil = performance.now() + 180;
+    const dy = clientY - drag.startY;
+    const velocity = dy / Math.max(1, performance.now() - drag.startedAt);
+    let target = drag.state;
+    if (drag.state === 'expanded') {
+      if (dy > 110 || velocity > .72) target = 'collapsed';
+    } else {
+      if (dy < -110 || velocity < -.72) target = 'expanded';
+      else if (dy > 110 || velocity > .72) target = 'closed';
+    }
+    this.settle(target);
+    if (event.cancelable) event.preventDefault();
+  }
+
+  touchStart(event) {
+    if (!this.isOpen || this.drag || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    this.startDrag(touch.clientX, touch.clientY, event.target, touch.identifier, 'touch');
+  }
+
+  touchPoint(event, id) {
+    return [...event.touches, ...event.changedTouches].find(touch => touch.identifier === id) || null;
+  }
+
+  touchMove(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'touch') return;
+    const touch = this.touchPoint(event, drag.id);
+    if (!touch) return;
+    this.updateDrag(touch.clientX, touch.clientY, event);
+  }
+
+  touchEnd(event) {
+    const drag = this.drag;
+    if (!drag || drag.input !== 'touch') return;
+    const touch = this.touchPoint(event, drag.id);
+    this.finishDrag(touch?.clientY ?? drag.lastY, event);
+  }
+
+  resize() {
+    if (this.drag) return;
+    this.measure();
+    this.applyOffset(this.offsetFor(this.state));
+  }
+}
+
+const sheetMotions = {};
+Object.entries(sheets).forEach(([key, wrap]) => {
+  if (!wrap || wrap.classList.contains('page') || key === 'gong') return;
+  sheetMotions[key] = new BottomSheetMotion(key, wrap, { initial: 'collapsed' });
 });
+const resizeMotionSheets = () => Object.values(sheetMotions).forEach(controller => controller.resize());
+window.addEventListener('resize', resizeMotionSheets);
+window.visualViewport?.addEventListener('resize', resizeMotionSheets);
 
 document.getElementById('avatarBtn').onclick = () => { closeDrawer(); sheets.settings.classList.add('open'); };
 document.getElementById('usageRow').onclick = () => { sheets.usage.classList.add('open'); loadUsage(); };
@@ -6330,35 +6720,59 @@ document.getElementById('apiRow').onclick = () => { sheets.api.classList.add('op
 function setArmed(on) {
   armedFresh = on;
   document.querySelector('.freshtip')?.remove();
-  if (on) {
-    const t = document.createElement('div');
-    t.className = 'freshtip';
-    t.innerHTML = '说一句话，新窗口才真的开<br>在那之前我还记得刚才所有的事<br><br>不想换了？点左上角回去就是';
-    log.appendChild(t);
-  }
+  syncConversationActions();
+  syncWelcome();
 }
-async function armNewChat() {
+
+function syncConversationActions() {
+  document.querySelectorAll('#dotsMenu [data-act="rename"], #dotsMenu [data-act="archive"]').forEach(button => {
+    button.disabled = !!armedFresh;
+    button.title = armedFresh ? '发送第一条消息后可管理' : '';
+  });
+}
+
+function saveUnsentDraft() {
+  const text = String(box.value || '').trim();
+  if (!text) return;
+  try { localStorage.setItem('dwellLastDraft', JSON.stringify({ text, at: Date.now() })); } catch {}
+}
+
+async function armNewChat(options = {}) {
   if (armedFresh) {
-    try { await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":false}' }); } catch {}
-    setArmed(false);
-    note('（不换了，还住这一条里）');
-    return;
+    closeDrawer();
+    sheets.chats.classList.remove('open');
+    return true;
   }
+  saveUnsentDraft();
   try {
-    await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":true}' });
-  } catch { note('（没接上，再试一次）', 'err'); return; }
+    const response = await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":true}' });
+    if (!response.ok) throw new Error('new chat rejected');
+  } catch {
+    if (!options.quiet) note('（新会话没打开，请检查连接）', 'err');
+    return false;
+  }
   closeDrawer();
-  log.innerHTML = '';                     // 界面先空出来，但那边还没真的换
-  guEl = null;
-  earliestSeq = null; olderBtn = null;    // 翻老账的游标也归零，别拿着旧窗口的号翻新窗口
+  sheets.chats.classList.remove('open');
+  document.getElementById('chatFilterMenu')?.classList.remove('open');
+  resetConversationView();
+  box.value = '';
+  box.style.height = 'auto';
+  attachments = [];
+  renderStrip();
   setArmed(true);
+  setTitle('Claude');
+  refreshSend();
   scroll(true);
+  if (options.restart !== false) await restartEventStream();
+  return true;
 }
 document.querySelectorAll('.nav .item.dis').forEach(b => b.onclick = () => note('（这间还没盖，图纸上排着呢）'));
 
 const dotsMenu = document.getElementById('dotsMenu');
+document.getElementById('newChatBtn').onclick = () => armNewChat();
 document.getElementById('dotsBtn').onclick = (e) => {
   e.stopPropagation();
+  syncConversationActions();
   dotsMenu.classList.toggle('open');
 };
 document.addEventListener('click', (e) => {
@@ -6371,7 +6785,8 @@ dotsMenu.querySelectorAll('.mi').forEach(b => b.onclick = async () => {
   if (act === 'settings') sheets.settings.classList.add('open');
   if (act === 'ctx') { sheets.ctx.classList.add('open'); loadContext(); }
   if (act === 'rename') {
-    const cur = document.querySelector('header .title h1').textContent;
+    if (armedFresh) return;
+    const cur = currentChatName || 'Claude';
     const name = prompt('这一窗叫什么好', cur);
     if (name && name.trim()) {
       try {
@@ -6385,14 +6800,19 @@ dotsMenu.querySelectorAll('.mi').forEach(b => b.onclick = async () => {
     }
   }
   if (act === 'archive') {
-    if (!confirm('把这一窗收起来？收起来就发不了消息了，在窗口列表右上角切到「已收纳」能找回来')) return;
+    if (armedFresh) return;
+    if (!confirm('归档这个会话？之后可以在 Chats 的“已归档”中恢复。')) return;
     try {
-      await fetch('api/chats', {
+      const response = await fetch('api/chats', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'archive', id: 'CURRENT', on: true })
+        body: JSON.stringify({ action: 'archive', id: 'CURRENT' })
       });
-      location.reload();
-    } catch { note('（没收成）', 'err'); }
+      if (!response.ok) throw new Error('archive rejected');
+      resetConversationView();
+      setArmed(true);
+      setTitle('Claude');
+      await restartEventStream();
+    } catch { note('（归档失败，请稍后再试）', 'err'); }
   }
   if (act === 'find') openFind();
   if (act === 'notes') { sheets.notes.classList.add('open'); loadNotes(true); }
@@ -6500,12 +6920,9 @@ document.getElementById('aliveRow').onclick = async () => {
     if (typeof d.busy === 'boolean') setBusy(d.busy);
     const alive = document.getElementById('aliveVal');
     if (alive) alive.textContent = d.demo || window.DWELL_DEMO ? '未连接 Mac' : d.alive ? '活着' : '断开了';
-    if (d.armed) {
-      await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":false}' });
-    }
   } catch {}
   try {
-    const c = await (await fetch('api/chats?scope=live', { cache: 'no-store' })).json();
+    const c = await (await fetch('api/chats?scope=all', { cache: 'no-store' })).json();
     const cur = (c.items || []).find(x => x.current);
     if (cur) setTitle(cur.name);
   } catch {}
@@ -7024,78 +7441,204 @@ document.getElementById('healthKey').onclick = async () => {
   } catch { note('（钥匙拿不到）', 'err'); }
 };
 
-/* ---------- 窗口列表 ---------- */
-let chatScope = 'live';        // live=没收纳的 box=收纳了的
-const SCOPE_NAME = { live: '全部', box: '已收纳' };
+/* ---------- 会话记录 ---------- */
+let chatScope = 'all';
+let chatRows = [];
+let chatManaging = false;
+let currentChatName = 'Claude';
+const selectedChats = new Set();
+const chatFilterMenu = document.getElementById('chatFilterMenu');
+const chatSearch = document.getElementById('chatSearch');
 
-function ago(ts) {
-  const s = Date.now() / 1000 - ts;
-  if (s < 60) return '刚刚';
-  if (s < 3600) return Math.floor(s / 60) + 'm';
-  if (s < 86400) return Math.floor(s / 3600) + 'h';
-  return Math.floor(s / 86400) + 'd';
+function chatDisplayTitle(item) {
+  const name = String(item?.name || '').trim();
+  const preview = String(item?.preview || '').trim().replace(/\s+/g, ' ');
+  if ((!name || name === 'ShiJie') && preview) return preview.slice(0, 48);
+  return name || '新会话';
+}
+
+function chatTime(ts) {
+  const seconds = Math.max(0, Date.now() / 1000 - Number(ts || 0));
+  if (seconds < 60) return '刚刚';
+  if (seconds < 3600) return Math.floor(seconds / 60) + ' 分钟前';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + ' 小时前';
+  if (seconds < 2 * 86400) return '前日';
+  if (seconds < 7 * 86400) return Math.floor(seconds / 86400) + ' 日前';
+  return new Date(Number(ts || 0) * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function setTitle(name) {
-  document.querySelector('header .title h1').textContent = name || 'Claude';
-  document.title = name || 'Claude';
+  currentChatName = name || 'Claude';
+  document.title = (name && name !== 'Claude' ? name + ' · ' : '') + 'dwell';
+}
+
+function updateChatManageBar() {
+  const chosen = chatRows.filter(item => selectedChats.has(item.id));
+  document.getElementById('chatManageCount').textContent = '已选 ' + chosen.length + ' 项';
+  document.getElementById('chatBulkArchive').hidden = !chosen.some(item => !item.archived);
+  document.getElementById('chatBulkRestore').hidden = !chosen.some(item => item.archived);
+}
+
+function setChatManaging(on) {
+  chatManaging = !!on;
+  sheets.chats.classList.toggle('managing', chatManaging);
+  if (!chatManaging) selectedChats.clear();
+  updateChatManageBar();
+  renderChats();
+}
+
+function renderChats() {
+  const body = document.getElementById('chatsBody');
+  const query = String(chatSearch.value || '').trim().toLowerCase();
+  const rows = chatRows.filter(item => {
+    if (!query) return true;
+    return (chatDisplayTitle(item) + ' ' + String(item.preview || '')).toLowerCase().includes(query);
+  });
+  body.innerHTML = '';
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'chat-empty';
+    empty.textContent = query ? '没有找到会话' : chatScope === 'archived' ? '还没有已归档会话' : '还没有会话记录';
+    body.appendChild(empty);
+    updateChatManageBar();
+    return;
+  }
+  rows.forEach(item => {
+    const row = document.createElement('button');
+    row.className = 'chat-row' + (selectedChats.has(item.id) ? ' selected' : '');
+    row.type = 'button';
+    row.dataset.chatId = item.id;
+    row.setAttribute('aria-pressed', selectedChats.has(item.id) ? 'true' : 'false');
+    const select = document.createElement('span');
+    select.className = 'chat-select';
+    select.appendChild(icEl('check', 15));
+    const copy = document.createElement('span');
+    copy.className = 'chat-row-copy';
+    const title = document.createElement('span');
+    title.className = 'chat-row-title';
+    title.textContent = chatDisplayTitle(item);
+    const meta = document.createElement('span');
+    meta.className = 'chat-row-meta';
+    const time = document.createElement('span');
+    time.textContent = chatTime(item.last || item.created);
+    meta.appendChild(time);
+    if (item.current) {
+      const badge = document.createElement('span');
+      badge.className = 'chat-row-badge';
+      badge.textContent = '当前';
+      meta.appendChild(badge);
+    }
+    if (item.archived) {
+      const badge = document.createElement('span');
+      badge.className = 'chat-row-badge';
+      badge.textContent = '已归档';
+      meta.appendChild(badge);
+    }
+    copy.append(title, meta);
+    row.append(select, copy);
+    row.onclick = () => {
+      if (chatManaging) {
+        if (selectedChats.has(item.id)) selectedChats.delete(item.id);
+        else selectedChats.add(item.id);
+        renderChats();
+        return;
+      }
+      switchChat(item);
+    };
+    body.appendChild(row);
+  });
+  updateChatManageBar();
 }
 
 async function loadChats() {
   const body = document.getElementById('chatsBody');
-  document.querySelector('#chatScope .sc').textContent = SCOPE_NAME[chatScope];
   try {
     const d = await (await fetch('api/chats?scope=' + chatScope, { cache: 'no-store' })).json();
-    body.innerHTML = '';
-    if (!d.items.length) {
-      body.innerHTML = '<div class="gnote" style="text-align:center;padding:40px 0">'
-        + (chatScope === 'box' ? '收纳盒是空的' : '还没有窗口') + '</div>';
-      return;
-    }
-    d.items.forEach(it => {
-      const b = document.createElement('button');
-      b.className = 'crow' + (it.current ? ' on' : '');
-      const mid = document.createElement('span');
-      mid.className = 'cmid';
-      const n = document.createElement('div');
-      n.className = 'cn';
-      n.textContent = it.name || '没名字';
-      const p = document.createElement('div');
-      p.className = 'cp';
-      p.textContent = it.preview || '还没说过话';
-      mid.append(n, p);
-      const t = document.createElement('span');
-      t.className = 'ct';
-      t.textContent = it.current ? '在这儿' : ago(it.last || it.created);
-      b.append(mid, t);
-      b.onclick = () => switchChat(it);
-      body.appendChild(b);
-    });
-  } catch { body.innerHTML = '<div class="gnote">拿不到窗口清单，等会儿再试</div>'; }
+    chatRows = Array.isArray(d.items) ? d.items : [];
+    document.getElementById('chatOffline').classList.toggle('on', !!d.offline);
+    renderChats();
+  } catch {
+    chatRows = [];
+    body.innerHTML = '<div class="chat-empty">会话记录读取失败，请检查连接</div>';
+  }
 }
 
-async function switchChat(it) {
-  if (it.current) { sheets.chats.classList.remove('open'); return; }
-  if (it.archived) { note('（这间收起来了——先从收纳里放出来才能进）'); return; }
+async function switchChat(item) {
+  if (item.current) { sheets.chats.classList.remove('open'); return; }
   try {
-    await fetch('api/chats', {
+    const response = await fetch('api/chats', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'switch', id: it.id })
+      body: JSON.stringify({ action: 'switch', id: item.id })
     });
-    location.reload();          // 换了一副记忆，界面整个重来最干净
-  } catch { note('（没切成，再试一次）', 'err'); }
+    if (!response.ok) throw new Error('switch rejected');
+    setArmed(false);
+    setTitle(chatDisplayTitle(item));
+    sheets.chats.classList.remove('open');
+    setChatManaging(false);
+    await restartEventStream({ loadHistory: true });
+    scroll(true);
+  } catch { note('（会话没有打开，请检查连接）', 'err'); }
 }
 
 document.getElementById('chatsMenu').onclick = () => {
+  chatFilterMenu.classList.remove('open');
+  setChatManaging(false);
   sheets.chats.classList.remove('open');
   openDrawer();
 };
-document.getElementById('chatScope').onclick = () => {
-  chatScope = chatScope === 'live' ? 'box' : 'live';
+document.getElementById('navChats').onclick = () => {
+  closeDrawer();
+  sheets.chats.classList.add('open');
+  setChatManaging(false);
+  chatSearch.value = '';
   loadChats();
 };
+document.getElementById('chatScope').onclick = event => {
+  event.stopPropagation();
+  chatFilterMenu.classList.toggle('open');
+};
+chatFilterMenu.querySelectorAll('[data-scope]').forEach(button => {
+  button.onclick = () => {
+    chatScope = button.dataset.scope;
+    chatFilterMenu.querySelectorAll('[data-scope]').forEach(item => item.classList.toggle('on', item === button));
+    chatFilterMenu.classList.remove('open');
+    selectedChats.clear();
+    loadChats();
+  };
+});
+document.getElementById('chatManage').onclick = () => setChatManaging(!chatManaging);
+document.getElementById('chatManageCancel').onclick = () => setChatManaging(false);
+chatSearch.oninput = renderChats;
+document.addEventListener('click', event => {
+  if (!chatFilterMenu.contains(event.target) && !event.target.closest('#chatScope')) chatFilterMenu.classList.remove('open');
+});
+
+async function bulkChatAction(action) {
+  const wantArchived = action === 'bulkArchive';
+  const ids = chatRows.filter(item => selectedChats.has(item.id) && item.archived !== wantArchived).map(item => item.id);
+  if (!ids.length) return;
+  try {
+    const response = await fetch('api/chats', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ids })
+    });
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || 'bulk action rejected');
+    const failed = (data.results || []).filter(result => !result.ok);
+    chatRows = Array.isArray(data.items) ? data.items.filter(item => {
+      if (chatScope === 'live') return !item.archived;
+      if (chatScope === 'archived') return item.archived;
+      return true;
+    }) : chatRows;
+    selectedChats.clear();
+    renderChats();
+    if (failed.length) note('（有 ' + failed.length + ' 个会话没有处理成功）', 'err');
+  } catch { note('（会话管理失败，请检查连接）', 'err'); }
+}
+document.getElementById('chatBulkArchive').onclick = () => bulkChatAction('bulkArchive');
+document.getElementById('chatBulkRestore').onclick = () => bulkChatAction('bulkRestore');
 document.getElementById('newSession').onclick = () => {
-  sheets.chats.classList.remove('open');
+  setChatManaging(false);
   armNewChat();
 };
 
@@ -7377,181 +7920,14 @@ async function pickEffort(e) {
 /* ---------- 添加照片和文件 ---------- */
 const addSheetEl = document.getElementById('addSheet');
 const addPanel = addSheetEl.querySelector('.sheet');
-const addSheetBody = addPanel.querySelector('.body');
-const addGrabber = document.getElementById('addGrabber');
-let addExpanded = false;
-let addDrag = null;
-let addAnimationId = 0;
-let suppressAddClick = false;
-let addDragFrame = 0;
-
-function addCollapsedHeight() {
-  return Math.min(Math.round(window.innerHeight * .47), addMaxHeight() - 1);
-}
-function addMaxHeight() {
-  const vv = window.visualViewport;
-  const topGap = Math.max(48, (vv?.offsetTop || 0) + 48);
-  return Math.max(300, Math.round((vv?.height || window.innerHeight) - topGap));
-}
-function addCollapsedOffset() {
-  return Math.max(0, addMaxHeight() - addCollapsedHeight());
-}
-function addCurrentOffset() {
-  const m = addPanel.style.transform.match(/translate3d\(0,\s*(-?[\d.]+)px/);
-  return m ? Number(m[1]) : (addExpanded ? 0 : addCollapsedOffset());
-}
-function setAddOffset(offset) {
-  const max = addMaxHeight() + 120;
-  const next = Math.max(0, Math.min(max, Number(offset) || 0));
-  addPanel.style.transform = 'translate3d(0, ' + next.toFixed(2) + 'px, 0)';
-  const collapsed = addCollapsedOffset();
-  addSheetEl.classList.toggle('expanded', next < collapsed * .45);
-}
-function resetAddSheetState() {
-  addAnimationId++;
-  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
-  addDrag = null;
-  addExpanded = false;
-  addSheetEl.classList.remove('expanded', 'dragging');
-  addPanel.style.transform = '';
-  addPanel.style.transition = '';
-  addPanel.style.willChange = '';
-  addSheetBody.scrollTop = 0;
-}
 function closeAddSheet() {
-  addSheetEl.classList.remove('open');
-  resetAddSheetState();
-}
-function dismissAddSheet() {
-  const id = ++addAnimationId;
-  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
-  addDrag = null;
-  addSheetEl.classList.add('dragging');
-  addPanel.style.transition = 'transform .24s cubic-bezier(.4, 0, .2, 1)';
-  addPanel.style.willChange = 'transform';
-  setAddOffset(addMaxHeight() + 80);
-  setTimeout(() => {
-    if (id !== addAnimationId) return;
-    closeAddSheet();
-  }, 260);
+  sheetMotions.add?.close();
 }
 function openAddSheet() {
-  resetAddSheetState();
-  addSheetEl.classList.add('open');
-  addPanel.style.transform = 'translate3d(0, ' + addCollapsedOffset() + 'px, 0)';
-  requestAnimationFrame(() => { if (addSheetEl.classList.contains('open')) setAddOffset(addCollapsedOffset()); });
+  sheetMotions.add?.open('collapsed');
   refreshAddOptions();
 }
-function settleAddSheet(expanded) {
-  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
-  const id = ++addAnimationId;
-  addExpanded = expanded;
-  addSheetEl.classList.toggle('expanded', expanded);
-  addSheetEl.classList.remove('dragging');
-  addPanel.style.transition = 'transform .3s cubic-bezier(.22, 1, .36, 1)';
-  setAddOffset(expanded ? 0 : addCollapsedOffset());
-  setTimeout(() => {
-    if (id !== addAnimationId) return;
-    addPanel.style.transition = '';
-    addPanel.style.willChange = '';
-  }, 380);
-}
-function applyAddDrag(drag) {
-  const dy = drag.lastY - drag.startY;
-  setAddOffset(drag.startOffset + dy);
-}
-function addPointerDown(e) {
-  if (!addSheetEl.classList.contains('open')) return;
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (e.target.closest('button, input, textarea, select, a')) return;
-  addDrag = {
-    id: e.pointerId,
-    startY: e.clientY,
-    lastY: e.clientY,
-    startOffset: addCurrentOffset(),
-    moved: false,
-    nativeScroll: false,
-    startedAt: performance.now()
-  };
-}
-function addPointerMove(e) {
-  if (!addDrag || addDrag.id !== e.pointerId) return;
-  const dy = e.clientY - addDrag.startY;
-  addDrag.lastY = e.clientY;
-  if (!addDrag.moved && Math.abs(dy) < 8) return;
-  if (!addDrag.moved && addExpanded && e.target.closest('.body')) {
-    const atTop = addSheetBody.scrollTop <= 0;
-    const atBottom = addSheetBody.scrollTop + addSheetBody.clientHeight >= addSheetBody.scrollHeight - 1;
-    const wantsNativeScroll = (dy > 0 && !atTop) || (dy < 0 && !atBottom);
-    if (wantsNativeScroll) {
-      addDrag.nativeScroll = true;
-      return;
-    }
-  }
-  if (addDrag.nativeScroll) return;
-  if (!addDrag.moved) {
-    addDrag.moved = true;
-    try { addPanel.setPointerCapture(e.pointerId); } catch {}
-    addSheetEl.classList.add('dragging');
-    addPanel.style.transition = 'none';
-  }
-  if (!addDragFrame) {
-    const drag = addDrag;
-    addDragFrame = requestAnimationFrame(() => {
-      addDragFrame = 0;
-      if (addDrag === drag && drag.moved) applyAddDrag(drag);
-    });
-  }
-  e.preventDefault();
-}
-function addPointerEnd(e) {
-  if (!addDrag || addDrag.id !== e.pointerId) return;
-  const drag = addDrag;
-  drag.lastY = e.clientY;
-  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
-  if (drag.moved) applyAddDrag(drag);
-  addDrag = null;
-  if (!drag.moved || drag.nativeScroll) {
-    addSheetEl.classList.remove('dragging');
-    addPanel.style.transition = '';
-    return;
-  }
-  suppressAddClick = true;
-  setTimeout(() => { suppressAddClick = false; }, 140);
-  const dy = e.clientY - drag.startY;
-  const elapsed = Math.max(1, performance.now() - drag.startedAt);
-  const velocity = dy / elapsed;
-  const collapseDistance = addCollapsedOffset();
-  const closeDistance = collapseDistance + 100;
-  if ((!addExpanded && (dy > 100 || velocity > .8)) ||
-      (addExpanded && (dy > closeDistance || (velocity > 1.15 && dy > collapseDistance * .7)))) {
-    dismissAddSheet();
-    e.preventDefault();
-    return;
-  }
-  const shouldExpand = addExpanded
-    ? !(dy > collapseDistance * .55 || velocity > .75)
-    : !(dy > 38 || velocity > .55);
-  settleAddSheet(shouldExpand);
-  e.preventDefault();
-}
-addPanel.addEventListener('pointerdown', addPointerDown);
-addPanel.addEventListener('pointermove', addPointerMove);
-addPanel.addEventListener('pointerup', addPointerEnd);
-addPanel.addEventListener('pointercancel', addPointerEnd);
-addPanel.addEventListener('click', (e) => {
-  if (!suppressAddClick) return;
-  e.preventDefault();
-  e.stopPropagation();
-}, true);
-document.querySelectorAll('#addSheet [data-close="add"]').forEach(el => el.addEventListener('click', resetAddSheetState));
 document.getElementById('plusBtn').onclick = openAddSheet;
-function syncAddSheetViewport() {
-  if (!addSheetEl.classList.contains('open') || addDrag) return;
-  setAddOffset(addExpanded ? 0 : addCollapsedOffset());
-}
-window.addEventListener('resize', syncAddSheetViewport);
-window.visualViewport?.addEventListener('resize', syncAddSheetViewport);
 const fCamera = document.getElementById('fCamera');
 const fPhoto = document.getElementById('fPhoto');
 const fFile = document.getElementById('fFile');
@@ -7822,6 +8198,7 @@ document.addEventListener('touchend', (e) => {
   });
 })();
 
+initializeChatClient();
 box.focus();
 </script>
 </body>

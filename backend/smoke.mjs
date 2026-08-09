@@ -23,11 +23,11 @@ const json = (body, method = 'POST') => ({
 
 const health = await call('health');
 assert.equal(health.ok, true);
-assert.equal(health.version, '0.4.2');
+assert.equal(health.version, '0.4.3');
 
 const status = await call('status');
 assert.equal(status.alive, true);
-assert.equal(status.version, '0.4.2');
+assert.equal(status.version, '0.4.3');
 
 const context = await call('context');
 assert.equal(context.ok, true);
@@ -295,9 +295,29 @@ assert.ok(currentMessages.msgs.some(item => item.text === isolatedText));
 await call('chats', json({ action: 'archive', id: 'CURRENT', on: true }));
 const afterArchive = await call('chats?scope=live');
 assert.notEqual(afterArchive.items.find(item => item.current)?.id, created.id);
-const archived = await call('chats?scope=box');
+const archived = await call('chats?scope=archived');
 assert.ok(archived.items.some(item => item.id === created.id));
-await call('chats', json({ action: 'archive', id: created.id, on: false }));
+const allChats = await call('chats?scope=all');
+assert.ok(allChats.items.some(item => item.id === created.id && item.archived));
+assert.equal(allChats.items.some(item => item.current), false);
+await call('chats', json({ action: 'switch', id: created.id }));
+assert.equal((await call('chats?scope=all')).items.find(item => item.id === created.id)?.current, true);
+const restored = await call('chats', json({ action: 'bulkRestore', ids: [created.id, 'missing-chat'] }));
+assert.deepEqual(restored.results.map(item => item.ok), [true, false]);
+assert.equal(restored.items.find(item => item.id === created.id)?.archived, false);
+const bulkArchived = await call('chats', json({ action: 'bulkArchive', ids: [created.id] }));
+assert.equal(bulkArchived.results[0]?.ok, true);
+assert.equal(bulkArchived.items.find(item => item.id === created.id)?.archived, true);
+await call('chats', json({ action: 'restore', id: created.id }));
+await call('chats', json({ action: 'switch', id: original.id }));
+
+const beforeBlank = await call('chats?scope=all');
+await call('newchat', json({ arm: true }));
+const armedBlank = await call('chats?scope=all');
+assert.equal(armedBlank.armed, true);
+assert.equal(armedBlank.items.length, beforeBlank.items.length);
+assert.equal(armedBlank.items.some(item => item.current), false);
+await call('newchat', json({ arm: false }));
 
 const poll = await call('poll?since=0&wait=0');
 assert.equal(poll.ok, true);
