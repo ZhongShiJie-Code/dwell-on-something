@@ -1579,8 +1579,10 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
     height: min(52dvh, 620px); max-height: calc(100dvh - env(safe-area-inset-top) - 48px); min-height: 0;
     background: var(--card); border-radius: 34px 34px 0 0; overflow: hidden;
     box-shadow: 0 -2px 18px rgba(40, 38, 34, .08);
+    touch-action: none;
     transition: height .34s cubic-bezier(.22, 1, .36, 1), transform .34s cubic-bezier(.22, 1, .36, 1);
   }
+  #addSheet.dragging .sheet { transition: none !important; will-change: height; }
   #addSheet .sheet, #addSheet .sheet button { user-select: none; -webkit-user-select: none; }
   #addSheet .sheet::after { background: var(--card); }
   #addSheet.expanded .sheet { height: calc(100dvh - env(safe-area-inset-top) - 48px); }
@@ -1593,7 +1595,7 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   #addSheet .head .hbtn { width: 42px; height: 42px; }
   #addSheet .head .hbtn .ic { width: 22px; height: 22px; stroke-width: 1.8; }
   #addSheet .head .ht { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
-  #addSheet .body { padding: 2px 20px calc(24px + env(safe-area-inset-bottom)); }
+  #addSheet .body { padding: 2px 20px calc(24px + env(safe-area-inset-bottom)); overflow-y: hidden; touch-action: none; }
   #addSheet .addgrid {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
     padding: 4px 0 2px;
@@ -6523,11 +6525,12 @@ async function pickEffort(e) {
 /* ---------- 添加照片和文件 ---------- */
 const addSheetEl = document.getElementById('addSheet');
 const addPanel = addSheetEl.querySelector('.sheet');
-const addHead = addSheetEl.querySelector('.head');
 const addGrabber = document.getElementById('addGrabber');
 let addExpanded = false;
 let addDrag = null;
 let addAnimationId = 0;
+let suppressAddClick = false;
+let addDragFrame = 0;
 
 function addCollapsedHeight() {
   return Math.min(Math.round(window.innerHeight * .52), 620);
@@ -6537,12 +6540,14 @@ function addExpandedHeight() {
 }
 function resetAddSheetState() {
   addAnimationId++;
+  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
   addDrag = null;
   addExpanded = false;
   addSheetEl.classList.remove('expanded', 'dragging');
   addPanel.style.height = '';
   addPanel.style.transform = '';
   addPanel.style.transition = '';
+  addPanel.style.willChange = '';
 }
 function closeAddSheet() {
   addSheetEl.classList.remove('open');
@@ -6550,10 +6555,12 @@ function closeAddSheet() {
 }
 function dismissAddSheet() {
   const id = ++addAnimationId;
+  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
   addDrag = null;
   addSheetEl.classList.remove('expanded');
   addSheetEl.classList.add('dragging');
   addPanel.style.transition = 'height .24s cubic-bezier(.4, 0, .2, 1)';
+  addPanel.style.willChange = 'height';
   addPanel.style.height = '0px';
   setTimeout(() => {
     if (id !== addAnimationId) return;
@@ -6565,6 +6572,7 @@ function openAddSheet() {
   addSheetEl.classList.add('open');
 }
 function settleAddSheet(expanded) {
+  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
   const current = addPanel.getBoundingClientRect().height;
   const target = expanded ? addExpandedHeight() : addCollapsedHeight();
   const id = ++addAnimationId;
@@ -6572,6 +6580,7 @@ function settleAddSheet(expanded) {
   addSheetEl.classList.toggle('expanded', expanded);
   addSheetEl.classList.remove('dragging');
   addPanel.style.transition = 'none';
+  addPanel.style.willChange = 'height';
   addPanel.style.height = current + 'px';
   void addPanel.offsetHeight;
   requestAnimationFrame(() => {
@@ -6583,27 +6592,60 @@ function settleAddSheet(expanded) {
     if (id !== addAnimationId) return;
     addPanel.style.height = '';
     addPanel.style.transition = '';
+    addPanel.style.willChange = '';
   }, 380);
 }
+function applyAddDragHeight(drag) {
+  const dy = drag.lastY - drag.startY;
+  const next = Math.max(addCollapsedHeight(), Math.min(addExpandedHeight(), drag.startHeight - dy));
+  addPanel.style.height = next + 'px';
+}
 function addPointerDown(e) {
-  if (e.target.closest('.hbtn')) return;
   if (!addSheetEl.classList.contains('open')) return;
-  addDrag = { id: e.pointerId, startY: e.clientY, startHeight: addPanel.getBoundingClientRect().height };
-  addSheetEl.classList.add('dragging');
-  addPanel.style.transition = 'none';
-  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
-  e.preventDefault();
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  addDrag = {
+    id: e.pointerId,
+    startY: e.clientY,
+    lastY: e.clientY,
+    startHeight: addPanel.getBoundingClientRect().height,
+    moved: false
+  };
 }
 function addPointerMove(e) {
   if (!addDrag || addDrag.id !== e.pointerId) return;
   const dy = e.clientY - addDrag.startY;
-  const next = Math.max(addCollapsedHeight(), Math.min(addExpandedHeight(), addDrag.startHeight - dy));
-  addPanel.style.height = next + 'px';
+  addDrag.lastY = e.clientY;
+  if (!addDrag.moved && Math.abs(dy) < 8) return;
+  if (!addDrag.moved) {
+    addDrag.moved = true;
+    try { addPanel.setPointerCapture(e.pointerId); } catch {}
+    addSheetEl.classList.add('dragging');
+    addPanel.style.transition = 'none';
+  }
+  if (!addDragFrame) {
+    const drag = addDrag;
+    addDragFrame = requestAnimationFrame(() => {
+      addDragFrame = 0;
+      if (addDrag === drag && drag.moved) applyAddDragHeight(drag);
+    });
+  }
   e.preventDefault();
 }
 function addPointerEnd(e) {
   if (!addDrag || addDrag.id !== e.pointerId) return;
-  const dy = e.clientY - addDrag.startY;
+  const drag = addDrag;
+  drag.lastY = e.clientY;
+  if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
+  if (drag.moved) applyAddDragHeight(drag);
+  addDrag = null;
+  if (!drag.moved) {
+    addSheetEl.classList.remove('dragging');
+    addPanel.style.transition = '';
+    return;
+  }
+  suppressAddClick = true;
+  setTimeout(() => { suppressAddClick = false; }, 140);
+  const dy = e.clientY - drag.startY;
   const collapseDistance = Math.max(260, (addExpandedHeight() - addCollapsedHeight()) * .74);
   if ((!addExpanded && dy > 80) || (addExpanded && dy > collapseDistance)) {
     dismissAddSheet();
@@ -6611,14 +6653,18 @@ function addPointerEnd(e) {
     return;
   }
   const shouldExpand = addExpanded ? dy < 80 : dy < -80;
-  addDrag = null;
   settleAddSheet(shouldExpand);
   e.preventDefault();
 }
-addGrabber.addEventListener('pointerdown', addPointerDown);
+addPanel.addEventListener('pointerdown', addPointerDown);
 addSheetEl.addEventListener('pointermove', addPointerMove);
 addSheetEl.addEventListener('pointerup', addPointerEnd);
 addSheetEl.addEventListener('pointercancel', addPointerEnd);
+addPanel.addEventListener('click', (e) => {
+  if (!suppressAddClick) return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
 document.querySelectorAll('#addSheet [data-close="add"]').forEach(el => el.addEventListener('click', resetAddSheetState));
 document.getElementById('plusBtn').onclick = openAddSheet;
 const fCamera = document.getElementById('fCamera');
