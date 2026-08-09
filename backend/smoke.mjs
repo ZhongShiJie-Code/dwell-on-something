@@ -23,11 +23,11 @@ const json = (body, method = 'POST') => ({
 
 const health = await call('health');
 assert.equal(health.ok, true);
-assert.equal(health.version, '0.4.1');
+assert.equal(health.version, '0.4.2');
 
 const status = await call('status');
 assert.equal(status.alive, true);
-assert.equal(status.version, '0.4.1');
+assert.equal(status.version, '0.4.2');
 
 const context = await call('context');
 assert.equal(context.ok, true);
@@ -55,8 +55,16 @@ const todo = todos.mine.find(item => item.text === `smoke-${stamp}`);
 assert.ok(todo?.id);
 todos = await call('todos', json({ action: 'toggle', list: 'mine', id: todo.id }));
 assert.equal(todos.mine.find(item => item.id === todo.id)?.done, true);
+todos = await call('todos', json({ action: 'edit', list: 'mine', id: todo.id, text: `smoke-edit-${stamp}`, at: '10:15', fixed: true }));
+assert.equal(todos.mine.find(item => item.id === todo.id)?.text, `smoke-edit-${stamp}`);
+assert.equal(todos.mine.find(item => item.id === todo.id)?.fixed, true);
 todos = await call('todos', json({ action: 'del', list: 'mine', id: todo.id }));
 assert.equal(todos.mine.some(item => item.id === todo.id), false);
+
+const desktopTasks = await call('desktop-tasks');
+assert.equal(desktopTasks.ok, true);
+assert.ok(Array.isArray(desktopTasks.items));
+assert.equal(typeof desktopTasks.control?.available, 'boolean');
 
 const date = new Date().toISOString().slice(0, 10);
 let cal = await call('cal', json({ action: 'add_event', date, text: `smoke-${stamp}`, time: '09:30' }));

@@ -14,6 +14,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.view.View;
 import android.view.Window;
 import android.webkit.JavascriptInterface;
@@ -40,6 +42,8 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> pendingFileCallback;
     private Uri pendingCameraUri;
     private OnBackInvokedCallback backCallback;
+    private TextToSpeech textToSpeech;
+    private String speechKey = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -238,6 +242,11 @@ public final class MainActivity extends Activity {
         }
         finishPendingFileRequest(null);
         discardCameraUri();
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+            textToSpeech = null;
+        }
         if (webView != null) {
             webView.removeJavascriptInterface("Android");
             webView.stopLoading();
@@ -263,6 +272,72 @@ public final class MainActivity extends Activity {
                     evaluate("window.onNativeSpeechCancelled&&window.onNativeSpeechCancelled()");
                 }
             });
+        }
+
+        @JavascriptInterface
+        public void shareText(String title, String text) {
+            runOnUiThread(() -> {
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setType("text/plain");
+                send.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+                startActivity(Intent.createChooser(send, title == null || title.isEmpty() ? "分享" : title));
+            });
+        }
+
+        @JavascriptInterface
+        public void openExternalUrl(String url) {
+            runOnUiThread(() -> {
+                try { openExternalIfNeeded(Uri.parse(url == null ? "" : url)); } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void speak(String text, String key) {
+            final String value = text == null ? "" : text.trim();
+            final String utteranceKey = key == null ? "dwell-speech" : key;
+            runOnUiThread(() -> {
+                speechKey = utteranceKey;
+                if (textToSpeech == null) {
+                    textToSpeech = new TextToSpeech(MainActivity.this, status -> {
+                        if (status == TextToSpeech.SUCCESS) speakNow(value, utteranceKey);
+                        else evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceKey) + ",'error')");
+                    });
+                } else {
+                    speakNow(value, utteranceKey);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopSpeaking() {
+            runOnUiThread(() -> {
+                if (textToSpeech != null) textToSpeech.stop();
+                String key = speechKey;
+                speechKey = "";
+                if (!key.isEmpty()) evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(key) + ",'stopped')");
+            });
+        }
+
+        private void speakNow(String text, String key) {
+            if (textToSpeech == null || text.isEmpty()) return;
+            textToSpeech.stop();
+            textToSpeech.setLanguage(Locale.SIMPLIFIED_CHINESE);
+            textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String utteranceId) {
+                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceId) + ",'started')");
+                }
+                @Override public void onDone(String utteranceId) {
+                    if (utteranceId.equals(speechKey)) speechKey = "";
+                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceId) + ",'done')");
+                }
+                @Override public void onError(String utteranceId) {
+                    if (utteranceId.equals(speechKey)) speechKey = "";
+                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceId) + ",'error')");
+                }
+            });
+            Bundle params = new Bundle();
+            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, key);
+            textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, params, key);
         }
 
         @JavascriptInterface

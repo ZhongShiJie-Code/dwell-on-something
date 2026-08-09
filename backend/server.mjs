@@ -20,6 +20,7 @@ import { spawn } from 'node:child_process';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import readline from 'node:readline';
+import { listDesktopTasks, controlDesktopTask } from './desktop-tasks.mjs';
 
 let webpush = null;
 try { ({ default: webpush } = await import('web-push')); } catch { /* optional until npm install */ }
@@ -43,7 +44,7 @@ const CLAUDE_BARE = process.env.DWELL_CLAUDE_BARE !== '0';
 const GONG_MODEL = process.env.DWELL_GONG_MODEL || 'haiku';
 const PERMISSION_MODE = process.env.DWELL_PERMISSION_MODE || 'acceptEdits';
 const AUTH_TOKEN = process.env.DWELL_AUTH_TOKEN || '';
-const SERVER_VERSION = '0.4.1';
+const SERVER_VERSION = '0.4.2';
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_TEXT = 600_000;
 const MAX_UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -63,6 +64,7 @@ const files = {
   subscriptions: path.join(DATA_DIR, 'subscriptions.json'),
   apiAuth: path.join(DATA_DIR, 'api-auth.json'),
   gong: path.join(DATA_DIR, 'gong.json'),
+  feedback: path.join(DATA_DIR, 'message-feedback.json'),
   favlines: path.join(DATA_DIR, 'favlines.md'),
 };
 
@@ -101,6 +103,7 @@ let nook = { books: [], progress: {}, annotations: {} };
 let subscriptions = [];
 let apiAuth = { mode: 'subscription', base: '', models: {} };
 let gong = [];
+let feedback = {};
 let persistQueue = Promise.resolve();
 let nextSeq = 0;
 let activeRun = null;
@@ -322,7 +325,7 @@ async function atomicJsonl(file, values) {
 
 async function persistAll() {
   const snapshot = clone({
-    state, chats, notes, todos, calendar, diary, whisper, wall, nook, subscriptions, apiAuth, gong,
+    state, chats, notes, todos, calendar, diary, whisper, wall, nook, subscriptions, apiAuth, gong, feedback,
   });
   return queuePersist(async () => {
     await Promise.all([
@@ -338,6 +341,7 @@ async function persistAll() {
       atomicJson(files.subscriptions, snapshot.subscriptions),
       atomicJson(files.apiAuth, snapshot.apiAuth),
       atomicJson(files.gong, snapshot.gong),
+      atomicJson(files.feedback, snapshot.feedback),
     ]);
   });
 }
@@ -403,6 +407,7 @@ async function load() {
   subscriptions = await readJson(files.subscriptions, []);
   apiAuth = await readJson(files.apiAuth, { mode: 'subscription', base: '', models: {} });
   gong = await readJson(files.gong, []);
+  feedback = await readJson(files.feedback, {});
   messages = await readJsonl(files.messages);
   nextSeq = messages.reduce((n, item) => Math.max(n, Number(item.seq) || 0), 0);
   if (!chats.length) {
@@ -1058,7 +1063,7 @@ function chatItems(scope) {
 function currentMessages(before, limit) {
   const sorted = messages.filter(item => item.chatId === state.activeChatId).sort((a, b) => a.seq - b.seq);
   const filtered = before ? sorted.filter(item => item.seq < before) : sorted;
-  const msgs = filtered.slice(-limit);
+  const msgs = filtered.slice(-limit).map(item => ({ ...item, feedback: feedback[String(item.seq)] || '' }));
   return { msgs, more: filtered.length > msgs.length, upto: sorted.reduce((n, item) => Math.max(n, item.seq), 0) };
 }
 
@@ -1149,6 +1154,33 @@ async function handleApi(req, res, url, origin) {
   if (method === 'GET' && route === 'status') return ok(res, { ok: true, alive: true, backend: 'claude-code', version: SERVER_VERSION, since: state.startedAt, busy: !!activeRun || !!state.busy, armed: !!state.armed, wake: wakeView(), workspace: WORKSPACE, claude: CLAUDE_BIN }, origin);
   if (route === 'messages' && method === 'GET') return ok(res, currentMessages(url.searchParams.get('before') ? Number(url.searchParams.get('before')) : 0, Math.min(Number(url.searchParams.get('limit') || 400), 400)), origin);
   if (route === 'said' && method === 'GET') return ok(res, currentMessages('', Math.min(Number(url.searchParams.get('limit') || 400), 400)), origin);
+  if (route === 'message-feedback' && method === 'POST') {
+    const data = await bodyJson(req);
+    const messageId = String(data.message_id || '');
+    const value = ['', 'up', 'down'].includes(String(data.value || '')) ? String(data.value || '') : '';
+    const message = messages.find(item => String(item.seq) === messageId && item.kind === 'gu');
+    if (!message) return bad(res, 404, 'message_not_found', origin);
+    if (value) feedback[messageId] = value;
+    else delete feedback[messageId];
+    await persistAll();
+    return ok(res, { ok: true, message_id: message.seq, value: feedback[messageId] || '' }, origin);
+  }
+  if (route === 'retry' && method === 'POST') {
+    const data = await bodyJson(req);
+    const target = messages.find(item => String(item.seq) === String(data.message_id || '') && item.kind === 'gu');
+    if (!target) return bad(res, 404, 'message_not_found', origin);
+    if (activeRun) return bad(res, 409, 'busy', origin);
+    const previous = messages.filter(item => item.chatId === target.chatId && item.kind === 'me' && item.seq < target.seq).at(-1);
+    if (!previous) return bad(res, 400, 'original_prompt_not_found', origin);
+    await startTurn(previous.text, [], { webSearch: false });
+    return ok(res, { ok: true, source_message_id: target.seq }, origin);
+  }
+  if (route === 'desktop-tasks' && method === 'GET') return ok(res, await listDesktopTasks(), origin);
+  if (parts[0] === 'desktop-tasks' && parts.length === 3 && method === 'POST') {
+    const result = await controlDesktopTask(parts[2], parts[1]);
+    if (!result.ok) return bad(res, result.status || 502, result.error, origin, result.detail || '');
+    return ok(res, result, origin);
+  }
   if (route === 'poll' && method === 'GET') {
     const since = Number(url.searchParams.get('since') || 0);
     const get = () => events.filter(item => item._cursor > since).map(({ _cursor, ...event }) => event);
@@ -1208,6 +1240,17 @@ async function handleApi(req, res, url, origin) {
     if (data.action === 'add') list.push({ id: id('todo'), text: String(data.text || '').slice(0, 300), done: false, at: data.at || '', fixed: !!data.fixed, by: data.by || (key === 'hers' ? 'her' : 'gu'), created: now() });
     if (data.action === 'toggle') { const item = list.find(x => x.id === data.id); if (item) item.done = !item.done; }
     if (data.action === 'del') todos[key] = list.filter(x => x.id !== data.id);
+    if (data.action === 'edit') {
+      const item = list.find(x => x.id === data.id);
+      if (item) {
+        const text = String(data.text || '').trim();
+        if (!text) return bad(res, 400, 'empty_todo', origin);
+        item.text = text.slice(0, 300);
+        item.at = String(data.at || '').slice(0, 5);
+        item.fixed = !!data.fixed;
+        item.updated = now();
+      }
+    }
     await persistAll(); return ok(res, { ok: true, ...todos }, origin);
   }
   if (route === 'cal' && method === 'GET') return ok(res, { ok: true, cal: calendar, predict: null }, origin);

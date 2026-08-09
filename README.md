@@ -83,7 +83,7 @@
 - [dwell-debug.apk](dist/dwell-debug.apk)
 - Android 工程：[android](android/)
 
-当前 APK 版本为 **0.4.1**。APK 内置 `web/` 前端，未配置地址时会明确显示离线演示；
+当前 APK 版本为 **0.4.2**。APK 内置 `web/` 前端，未配置地址时会明确显示离线演示；
 配置 Mac 后端地址并测试成功后，聊天和各功能页才走真实数据。
 
 Android 壳已经接入系统语音输入、相机/相册/文件选择、系统返回手势和原生通知。

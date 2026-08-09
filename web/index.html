@@ -23,12 +23,20 @@
    没有配置地址时，file:// 仍保留离线演示模式，方便只看界面。 */
 (function () {
   var params = new URLSearchParams(location.search);
-  var base = '';
-  try { base = params.get('api') || localStorage.getItem('dwellApiBase') || ''; } catch (e) {}
+  var base = '', lan = '', remote = '';
+  try {
+    lan = localStorage.getItem('dwellLanBase') || '';
+    remote = localStorage.getItem('dwellRemoteBase') || '';
+    base = params.get('api') || localStorage.getItem('dwellApiBase') || lan || remote || '';
+  } catch (e) {}
   base = String(base || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  lan = String(lan || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  remote = String(remote || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  window.DWELL_LAN_BASE = lan;
+  window.DWELL_REMOTE_BASE = remote;
   window.DWELL_API_BASE = base;
   try { window.DWELL_API_TOKEN = localStorage.getItem('dwellApiToken') || ''; } catch (e) { window.DWELL_API_TOKEN = ''; }
-  window.DWELL_DEMO = !base && (location.protocol === 'file:' || params.get('demo') === '1');
+  window.DWELL_DEMO = params.get('demo') === '1' || (!base && location.protocol === 'file:');
 })();
 </script>
 <script>
@@ -353,6 +361,26 @@ html[data-theme="dark"] .glass,
   }
   @keyframes blink { 50% { opacity: 0; } }
 
+  .msg-extras { margin: 10px 0 2px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .msg-sources { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--text); font-size: 13px; }
+  .msg-sources .ic { width: 17px; height: 17px; color: var(--dim); }
+  .msg-sources:active { background: var(--panel); transform: scale(.985); }
+  .msg-actions { display: flex; align-items: center; gap: 3px; color: var(--dim); }
+  .msg-action { width: 38px; height: 38px; padding: 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; display: inline-flex; align-items: center; justify-content: center; }
+  .msg-action .ic { width: 20px; height: 20px; }
+  .msg-action:active, .msg-action.on { background: var(--panel); color: var(--text); }
+  .msg-action.done { color: var(--green); }
+  .msg-action[disabled] { opacity: .45; }
+  .msg-summary { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 13.5px; padding: 4px 0; }
+  .msg-summary .ic { width: 16px; height: 16px; }
+  .source-item { display: block; padding: 15px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+  .source-item:active { opacity: .62; }
+  .source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .source-site { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; margin-top: 8px; }
+  .summary-item { width: 100%; display: flex; align-items: flex-start; gap: 13px; padding: 12px 0 18px; text-align: left; color: inherit; font-size: 15px; line-height: 1.65; }
+  .summary-item .ic { color: var(--line-strong, var(--dim)); flex: none; margin-top: 2px; }
+  .summary-detail { display: block; padding: 12px 0; color: var(--dim); font-size: 14px; }
+
   .toolline .ic { width: 15px; height: 15px; }
   .grabber {
     width: 38px; height: 5px; border-radius: 3px; background: var(--line);
@@ -629,6 +657,7 @@ html[data-theme="dark"] .composer {
     background: var(--bg); border-radius: 24px 24px 0 0;
     display: flex; flex-direction: column;
     animation: rise .22s ease;
+    will-change: transform;
   }
   @media (min-width: 700px) { .sheet { border-radius: 24px; max-height: 80vh; } }
   .sheet::after {   /* 往上拽的时候底下不露缝 */
@@ -642,15 +671,19 @@ html[data-theme="dark"] .composer {
   .sheetWrap.page .grabber { margin-top: calc(10px + env(safe-area-inset-top)); }
   @keyframes rise { from { transform: translateY(24px); opacity: .6; } }
   .sheet .head {
-    flex: none; display: flex; align-items: center; padding: 16px 16px 12px;
+    flex: none; display: flex; align-items: center;
+    padding: 8px 12px 10px;
   }
   .sheet .head .hbtn {   
-    width: 40px; height: 40px; flex: none; color: inherit;
+    width: 48px; height: 48px; flex: none; color: inherit;
     display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; touch-action: manipulation;
   }
   .sheet .head .hbtn .ic { width: 19px; height: 19px; }
   .sheet .head .ht { flex: 1; text-align: center; font-size: 18px; font-weight: 700; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sheet .head .hspace { width: 40px; flex: none; }
+  .sheet .head .hspace { width: 48px; flex: none; }
+  .sheet .head .hbtn:active { background: rgba(128,128,128,.12); transform: scale(.97); }
+  .sheetWrap.page .head { padding-top: calc(env(safe-area-inset-top) + 8px); }
   .sheet .body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px calc(20px + env(safe-area-inset-bottom)); }
 
   #settingsSheet .sheet { height: min(760px, calc(100dvh - 16px)); max-height: calc(100dvh - 16px); }
@@ -1473,6 +1506,18 @@ html[data-theme="dark"] .note { color: #2f2b26; box-shadow: 0 3px 12px rgba(0,0,
           background: var(--panel); color: var(--text);
           font-variant-numeric: tabular-nums; transition: background .2s, color .2s; }
   .chip.on { background: var(--text); color: var(--bg); }
+  .task-card { background: var(--panel); border-radius: 17px; padding: 15px; }
+  .task-card + .task-card { margin-top: 10px; }
+  .task-title { font-size: 16px; line-height: 1.4; }
+  .task-description { color: var(--dim); font-size: 13px; line-height: 1.55; margin-top: 3px; }
+  .task-meta { display: flex; flex-wrap: wrap; gap: 7px 13px; color: var(--dim); font-size: 12.5px; margin-top: 10px; }
+  .task-status.on { color: var(--green); }
+  .task-status.off { color: var(--dim); }
+  .task-actions { display: flex; gap: 8px; margin-top: 13px; }
+  .task-actions button { min-height: 36px; padding: 7px 13px; border-radius: 10px; background: var(--bg); color: inherit; font-size: 13px; }
+  .task-actions button:active { transform: scale(.98); }
+  .task-actions button[disabled] { opacity: .42; }
+  .task-note { color: var(--dim); font-size: 13px; line-height: 1.65; padding: 8px 4px 15px; }
   .hadd input[type=time] {
     border: 0; border-radius: 999px; padding: 6px 12px;
     background: var(--panel); color: inherit; font: inherit; font-size: 12.5px;
@@ -1593,26 +1638,27 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
 
   /* Add to chat：按 Claude 移动端的卡片密度排版，底部抽屉会在这里复用同一套间距。 */
   #addSheet .sheet {
-    height: min(47dvh, 560px); max-height: calc(100dvh - env(safe-area-inset-top) - 48px); min-height: 0;
+    height: calc(100dvh - max(env(safe-area-inset-top) + 12px, 48px));
+    max-height: calc(100dvh - max(env(safe-area-inset-top) + 12px, 48px)); min-height: 0;
     background: var(--card); border-radius: 34px 34px 0 0; overflow: hidden;
     box-shadow: 0 -2px 18px rgba(40, 38, 34, .08);
-    touch-action: none;
-    transition: height .34s cubic-bezier(.22, 1, .36, 1), transform .34s cubic-bezier(.22, 1, .36, 1);
+    touch-action: pan-y;
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1);
   }
-  #addSheet.dragging .sheet { transition: none !important; will-change: height; }
+  #addSheet.dragging .sheet { transition: none !important; will-change: transform; }
   #addSheet .sheet, #addSheet .sheet button { user-select: none; -webkit-user-select: none; }
   #addSheet .sheet::after { background: var(--card); }
-  #addSheet.expanded .sheet { height: calc(100dvh - env(safe-area-inset-top) - 48px); }
   #addSheet .grabber {
     width: 38px; height: 5px; margin: 10px auto 5px; background: #d8d8d4;
-    cursor: grab; touch-action: none;
+    cursor: grab;
   }
   #addSheet .grabber:active { cursor: grabbing; }
-  #addSheet .head { padding: 8px 18px 10px; touch-action: auto; }
-  #addSheet .head .hbtn { width: 42px; height: 42px; }
+  #addSheet .head { padding: 8px 12px 10px; touch-action: manipulation; }
+  #addSheet .head .hbtn { width: 48px; height: 48px; }
   #addSheet .head .hbtn .ic { width: 22px; height: 22px; stroke-width: 1.8; }
   #addSheet .head .ht { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
-  #addSheet .body { padding: 2px 13px calc(24px + env(safe-area-inset-bottom)); overflow-y: hidden; touch-action: none; }
+  #addSheet .body { padding: 2px 13px calc(24px + env(safe-area-inset-bottom)); overflow-y: hidden; }
+  #addSheet.expanded .body { overflow-y: auto; }
   #addSheet .addgrid {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
     padding: 6px 0 2px;
@@ -1657,6 +1703,12 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   }
   #addSheet .add-switch:not(.on) { background: var(--panel); }
   #addSheet .add-switch:not(.on) i { transform: translateX(-18px); }
+
+  .todo-edit { display: flex; align-items: center; gap: 8px; width: 100%; flex-wrap: wrap; }
+  .todo-edit input[type="text"] { flex: 1 1 180px; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 15.5px; }
+  .todo-edit input[type="time"] { border: 0; background: transparent; color: var(--dim); font: inherit; font-size: 13px; }
+  .todo-edit .chip, .todo-edit .go, .todo-edit .cancel { min-height: 34px; }
+  .todo-edit .cancel { border: 0; background: transparent; color: var(--dim); padding: 7px 8px; }
   @media (prefers-color-scheme: dark) {
     html:not([data-theme="light"]) #addSheet .addbig,
     html:not([data-theme="light"]) #addSheet .addrow,
@@ -1827,9 +1879,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
       <button class="item" id="navNews"><span class="ic" data-i="fileText"></span>日报</button>
       <button class="item" id="navHealth"><span class="ic" data-i="heartIc"></span>健康</button>
       <button class="item" id="navRepo"><span class="ic" data-i="box"></span>仓库</button>
-      <div class="sect">Recents</div>
-      <button class="recent" id="recGu">Claude</button>
-      <button class="recent" id="recGong">另一位</button>
+      <button class="item" id="navTasks"><span class="ic" data-i="alarm"></span>定时任务</button>
     </div>
     <div class="drawer-foot">
       <button id="avatarBtn" title="我的主页">Me</button>
@@ -2073,6 +2123,19 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
   </div>
 </div>
 
+<div class="sheetWrap page" id="tasksSheet">
+  <div class="shade" data-close="tasks"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="head">
+      <button class="hbtn" data-close="tasks"><span class="ic" data-i="x"></span></button>
+      <div class="ht"></div>
+      <div class="hspace"></div>
+    </div>
+    <div class="body" id="tasksBody"></div>
+  </div>
+</div>
+
 <!-- 思维链弹层 -->
 <div class="sheetWrap" id="thinkSheet">
   <div class="shade" data-close="think"></div>
@@ -2084,6 +2147,32 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
       <div class="hspace"></div>
     </div>
     <div class="body"><div class="thinkbody" id="thinkBodyEl"></div></div>
+  </div>
+</div>
+
+<div class="sheetWrap" id="sourcesSheet">
+  <div class="shade" data-close="sources"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="head">
+      <button class="hbtn" data-close="sources"><span class="ic" data-i="x"></span></button>
+      <div class="ht">Sources</div>
+      <div class="hspace"></div>
+    </div>
+    <div class="body" id="sourcesBody"></div>
+  </div>
+</div>
+
+<div class="sheetWrap" id="summarySheet">
+  <div class="shade" data-close="summary"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="head">
+      <button class="hbtn" data-close="summary"><span class="ic" data-i="x"></span></button>
+      <div class="ht">Summary</div>
+      <div class="hspace"></div>
+    </div>
+    <div class="body" id="summaryBody"></div>
   </div>
 </div>
 
@@ -2212,9 +2301,10 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
     'api/music':       { ok: true, id: '441491828', name: '演示曲目', artist: '演示歌手',
                          album: '演示专辑', pic: '', sec: 239 },
     'api/todos':       { ok: true, mine: [
-      { id: 1, text: '把静态检查接进部署流程', done: false, at: '09:00' },
-      { id: 2, text: '写 README', done: false, at: '' },
-      { id: 3, text: '修那个流式渲染的坑', done: true, at: '' } ], hers: [] },
+      { id: 1, text: '把静态检查接进部署流程', done: false, at: '09:00', by: 'me' },
+      { id: 2, text: '写 README', done: false, at: '', by: 'me' },
+      { id: 3, text: '修那个流式渲染的坑', done: true, at: '', by: 'me' } ], hers: [] },
+    'api/desktop-tasks': { ok: true, source: 'demo', control: { available: false, reason: 'desktop_control_unavailable' }, items: [] },
     'api/whisper':     { items: [
       { who: 'her', text: '今天这个改得挺好看的', at: 1786000000 },
       { who: 'gu',  text: '记下了。下次照这个方向走。', at: 1786001200 },
@@ -2265,7 +2355,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         await new Promise(resolve => setTimeout(resolve, 700));
         fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
       }
-      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.1', events: fresh });
+      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.2', events: fresh });
     }
     if (p === 'api/send' && method === 'POST') {
       const data = parseBody(init);
@@ -2288,6 +2378,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
       if (data.action === 'add') list.push({ id: 'demo-' + Date.now(), text: String(data.text || ''), done: false, at: data.at || '', fixed: !!data.fixed, by: key === 'hers' ? 'her' : 'gu', created: Math.floor(Date.now() / 1000) });
       if (data.action === 'toggle') { const item = list.find(x => String(x.id) === String(data.id)); if (item) item.done = !item.done; }
       if (data.action === 'del') D['api/todos'][key] = list.filter(x => String(x.id) !== String(data.id));
+      if (data.action === 'edit') { const item = list.find(x => String(x.id) === String(data.id)); if (item) { item.text = String(data.text || '').trim().slice(0, 300); item.at = String(data.at || ''); item.fixed = !!data.fixed; } }
       return R(D['api/todos']);
     }
     if (p === 'api/cal' && method === 'POST') {
@@ -2328,6 +2419,125 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
     }
     return realFetch(input, init);
   };
+})();
+
+/* 连接管理与离线仓库：健康探测不阻塞首屏，断网时回放 GET 快照并排队小型写操作。 */
+(function () {
+  const dbPromise = ('indexedDB' in window) ? new Promise((resolve, reject) => {
+    const request = indexedDB.open('dwell-offline', 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots');
+      if (!db.objectStoreNames.contains('mutations')) db.createObjectStore('mutations');
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  }) : Promise.reject(new Error('indexeddb unavailable'));
+  async function store(mode, key, value, name = 'snapshots') {
+    const db = await dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(name, mode === 'read' ? 'readonly' : 'readwrite');
+      const objectStore = tx.objectStore(name);
+      const req = mode === 'read' ? objectStore.get(key)
+        : mode === 'delete' ? objectStore.delete(key)
+        : objectStore.put(value, key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function all(name) {
+    const db = await dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(name, 'readonly');
+      const req = tx.objectStore(name).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  window.DWELL_OFFLINE_STORE = {
+    async get(key) { try { return await store('read', key); } catch { return null; } },
+    async set(key, value) { try { await store('write', key, value); } catch {} },
+    async enqueue(path, init) {
+      const item = {
+        id: 'mutation-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+        path,
+        init: { method: init?.method || 'POST', headers: { ...(init?.headers || {}) }, body: init?.body || '' },
+        createdAt: Date.now(),
+      };
+      try { await store('write', item.id, item, 'mutations'); return item.id; } catch { return ''; }
+    },
+    async mutations() { try { return await all('mutations'); } catch { return []; } },
+    async removeMutation(id) { try { await store('delete', id, null, 'mutations'); } catch {} },
+  };
+  const networkFetch = window.fetch.bind(window);
+  window.DWELL_NETWORK_FETCH = networkFetch;
+  window.fetch = async function (input, init) {
+    const raw = String(typeof input === 'string' ? input : (input && input.url) || '');
+    const method = String(init?.method || (input && input.method) || 'GET').toUpperCase();
+    const key = raw.includes('api/') ? raw.slice(raw.indexOf('api/')).split('#')[0] : '';
+    try {
+      const response = await networkFetch(input, init);
+      if (key && method === 'GET' && response.ok) {
+        try { const snapshot = await response.clone().json(); window.DWELL_OFFLINE_STORE.set(key, snapshot); } catch {}
+      }
+      return response;
+    } catch (error) {
+      if (key && method === 'GET') {
+        const snapshot = await window.DWELL_OFFLINE_STORE.get(key);
+        if (snapshot != null) return new Response(JSON.stringify({ ...snapshot, offline: true }), { status: 200, headers: { 'Content-Type': 'application/json', 'X-Dwell-Offline': '1' } });
+      }
+      throw error;
+    }
+  };
+  const clean = (value) => String(value || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  async function check(base) {
+    if (!base) return false;
+    try {
+      const signal = AbortSignal.timeout ? AbortSignal.timeout(1800) : undefined;
+      const response = await (window.DWELL_RAW_FETCH || networkFetch)(clean(base) + '/api/health', { cache: 'no-store', signal, headers: window.DWELL_API_TOKEN ? { 'X-Dwell-Token': window.DWELL_API_TOKEN } : {} });
+      return response.ok && !!(await response.json()).ok;
+    } catch { return false; }
+  }
+  let syncing = false;
+  async function syncPending() {
+    if (syncing || window.DWELL_DEMO || window.DWELL_OFFLINE) return;
+    syncing = true;
+    try {
+      const pending = await window.DWELL_OFFLINE_STORE.mutations();
+      pending.sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+      for (const item of pending) {
+        try {
+          const response = await window.fetch(item.path, { ...item.init, cache: 'no-store' });
+          if (!response.ok) break;
+          const data = await response.clone().json().catch(() => null);
+          if (data?.ok === false) break;
+          await window.DWELL_OFFLINE_STORE.removeMutation(item.id);
+          if (item.path === 'api/todos' && data && Array.isArray(data.mine) && typeof renderTodos === 'function') {
+            await window.DWELL_OFFLINE_STORE.set('api/todos', data);
+            if (document.getElementById('todoSheet')?.classList.contains('open')) renderTodos(data);
+          }
+        } catch { break; }
+      }
+    } finally { syncing = false; }
+  }
+  async function probe() {
+    if (window.DWELL_DEMO) { window.DWELL_OFFLINE = true; return; }
+    const candidates = [window.DWELL_LAN_BASE, window.DWELL_REMOTE_BASE, window.DWELL_API_BASE].map(clean).filter((value, index, all) => value && all.indexOf(value) === index);
+    if (!candidates.length) { window.DWELL_OFFLINE = location.protocol === 'file:'; return; }
+    const results = await Promise.all(candidates.map(async candidate => [candidate, await check(candidate)]));
+    const active = results.find(([, healthy]) => healthy)?.[0] || '';
+    if (active) {
+      window.DWELL_API_BASE = active; window.DWELL_OFFLINE = false;
+      try { localStorage.setItem('dwellApiBase', active); } catch {}
+      await syncPending();
+      return;
+    }
+    window.DWELL_OFFLINE = true;
+  }
+  window.DWELL_CONNECTION = { probe, check, sync: syncPending };
+  setTimeout(probe, 80);
+  window.addEventListener('online', probe);
+  window.addEventListener('offline', () => { window.DWELL_OFFLINE = true; });
 })();
 
 /* ============ 线条图标（feather 风格，stroke 跟文字颜色走） ============ */
@@ -2396,6 +2606,12 @@ const ICONS = {
   faceCry:   S('<circle cx="12" cy="12" r="9"/><path d="M8.5 15.7a4.6 4.6 0 0 1 7 0"/><line x1="9" y1="9.3" x2="9" y2="9.7"/><line x1="15" y1="9.3" x2="15" y2="9.7"/><path d="M9 11.6v2.4"/>'),
   bolt: S('<polygon points="13 2 4 14 11 14 10 22 19 10 12 10 13 2"/>'),
   tool: S('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>'),
+  share: S('<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><line x1="8.2" y1="10.8" x2="15.8" y2="6.2"/><line x1="8.2" y1="13.2" x2="15.8" y2="17.8"/>'),
+  play: S('<polygon points="8 5 19 12 8 19 8 5"/>'),
+  stop: S('<rect x="7" y="7" width="10" height="10" rx="1.5"/>'),
+  thumbUp: S('<path d="M7 10v10H4a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h3z"/><path d="M7 20h8.4a2 2 0 0 0 1.9-1.4l2.2-6.5A2 2 0 0 0 17.6 9H14l.7-3.5A2.9 2.9 0 0 0 11.9 2L7 10"/>'),
+  thumbDown: S('<path d="M7 14V4H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h3z"/><path d="M7 4h8.4a2 2 0 0 1 1.9 1.4l2.2 6.5A2 2 0 0 1 17.6 15H14l.7 3.5a2.9 2.9 0 0 1-2.8 3.5L7 14"/>'),
+  refresh: S('<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.6 4.2v4.6h-4.6"/>'),
 };
 function fillIcons(root) {
   (root || document).querySelectorAll('.ic[data-i]').forEach(el => {
@@ -2516,6 +2732,7 @@ function addMe(text) {
   r.appendChild(b);
   renderRich(b);
   scroll(true);
+  activeTurnMeta = { thought: '', toolIds: [], startedAt: Date.now() };
   guEl = null; endThink(); closeGroup();
 }
 
@@ -2563,6 +2780,8 @@ function ensureThink() {
 function appendThink(t) {
   const buf = ensureThink();
   buf.text += t;
+  if (!activeTurnMeta) activeTurnMeta = { thought: '', toolIds: [], startedAt: Date.now() };
+  activeTurnMeta.thought = buf.text;
   if (curThinkIdx === thinkStore.indexOf(buf) && sheets.think.classList.contains('open')) {
     thinkBodyEl.textContent = buf.text;
   }
@@ -2589,9 +2808,182 @@ function ensureGu() {
   const d = document.createElement('div');
   d.className = 'gu';
   r.appendChild(d);
+  r._guEl = d;
+  d._row = r;
   guEl = d;
   scroll();
   return guEl;
+}
+
+let activeTurnMeta = null;
+const feedbackState = new Map();
+let currentSources = [];
+let speechActiveKey = '';
+
+function extractSources(text) {
+  const out = [], seen = new Set();
+  const re = /https?:\/\/[^\s<>"'`()\[\]{}]+/gi;
+  for (const raw of String(text || '').match(re) || []) {
+    const clean = raw.replace(/[.,!?;:，。！？；：、）》」』]+$/g, '');
+    try {
+      const url = new URL(clean);
+      if (!['http:', 'https:'].includes(url.protocol) || seen.has(url.href)) continue;
+      seen.add(url.href);
+      out.push({ url: url.href, title: url.hostname.replace(/^www\./, ''), site: url.hostname.replace(/^www\./, '') });
+    } catch {}
+  }
+  return out;
+}
+function sourceTextFor(meta, text) {
+  const extra = (meta?.toolIds || []).map(id => toolInfo[id]?.result || '').join('\n');
+  return [text, extra].filter(Boolean).join('\n');
+}
+function setSpeechButtons(key, on) {
+  document.querySelectorAll('.msg-action.speech').forEach(button => {
+    if (button.dataset.speech !== key && on) return;
+    button.classList.toggle('on', !!on && button.dataset.speech === key);
+    button.innerHTML = ICONS[on && button.dataset.speech === key ? 'stop' : 'play'];
+    button.title = on && button.dataset.speech === key ? '停止播放' : '播放';
+  });
+}
+window.onNativeSpeechState = (key, state) => {
+  const on = state === 'started' || state === 'speaking';
+  speechActiveKey = on ? String(key || '') : '';
+  setSpeechButtons(String(key || ''), on);
+};
+async function copyMessage(text, button) {
+  const done = () => { button.innerHTML = ICONS.check; button.classList.add('done'); setTimeout(() => { button.innerHTML = ICONS.copy; button.classList.remove('done'); }, 1400); };
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const input = document.createElement('textarea'); input.value = text; input.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
+    }
+    done();
+  } catch { note('（复制失败，请长按文字复制）', 'err'); }
+}
+function shareMessage(text, sources) {
+  const links = (sources || []).map(x => x.url).join('\n');
+  const payload = links ? text + '\n\nSources:\n' + links : text;
+  try {
+    if (window.Android?.shareText) { window.Android.shareText('Claude · ShiJie', payload); return; }
+    if (navigator.share) { navigator.share({ title: 'Claude · ShiJie', text: payload }).catch(() => {}); return; }
+  } catch {}
+  copyMessage(payload, document.createElement('button'));
+}
+function speakMessage(text, key, button) {
+  if (speechActiveKey === key) {
+    if (window.Android?.stopSpeaking) window.Android.stopSpeaking();
+    else window.speechSynthesis?.cancel();
+    speechActiveKey = '';
+    setSpeechButtons(key, false);
+    return;
+  }
+  if (speechActiveKey) {
+    try { window.Android?.stopSpeaking?.(); window.speechSynthesis?.cancel(); } catch {}
+    setSpeechButtons(speechActiveKey, false);
+  }
+  speechActiveKey = key;
+  setSpeechButtons(key, true);
+  try {
+    if (window.Android?.speak) { window.Android.speak(text, key); return; }
+    if (!window.speechSynthesis) throw new Error('speech unavailable');
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.onend = () => { speechActiveKey = ''; setSpeechButtons(key, false); };
+    window.speechSynthesis.speak(utterance);
+  } catch { speechActiveKey = ''; setSpeechButtons(key, false); note('（当前设备没有可用的朗读引擎）', 'err'); }
+}
+async function saveMessageFeedback(messageId, value) {
+  const key = String(messageId || '');
+  const next = feedbackState.get(key) === value ? '' : value;
+  feedbackState.set(key, next);
+  const mutation = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: messageId, value: next }) };
+  try {
+    const response = await fetch('api/message-feedback', mutation);
+    if (!response.ok) throw new Error('feedback not accepted');
+  } catch { await window.DWELL_OFFLINE_STORE?.enqueue('api/message-feedback', mutation); }
+  document.querySelectorAll('.msg-action').forEach(button => {
+    if (button.dataset.feedbackId === key) button.classList.toggle('on', button.dataset.feedback === next);
+  });
+}
+function openSources(sources) {
+  currentSources = sources || [];
+  const body = document.getElementById('sourcesBody');
+  body.innerHTML = '';
+  if (!currentSources.length) { body.textContent = '这条回复没有可靠来源。'; return; }
+  currentSources.forEach(source => {
+    const a = document.createElement('a');
+    a.className = 'source-item'; a.href = source.url; a.target = '_blank'; a.rel = 'noopener';
+    a.onclick = (event) => {
+      if (!window.Android?.openExternalUrl) return;
+      event.preventDefault();
+      try { window.Android.openExternalUrl(source.url); } catch {}
+    };
+    const title = document.createElement('div'); title.className = 'source-title'; title.textContent = source.title || source.url;
+    const site = document.createElement('div'); site.className = 'source-site'; site.append(icEl('globe', 17), document.createTextNode(source.site || source.url));
+    a.append(title, site); body.appendChild(a);
+  });
+  sheets.sources.classList.add('open');
+}
+function openThoughtText(text) {
+  thinkBodyEl.textContent = text || '没有可展示的思考内容。';
+  curThinkIdx = -1;
+  sheets.think.classList.add('open');
+}
+function openSummary(meta, text) {
+  const body = document.getElementById('summaryBody');
+  body.innerHTML = '';
+  const item = document.createElement('button'); item.className = 'summary-item';
+  item.appendChild(icEl('petal', 19));
+  const copy = document.createElement('span');
+  const tools = (meta?.toolIds || []).map(id => verbOf(toolInfo[id]?.name || '', toolInfo[id]?.input || {})[1]).filter(Boolean);
+  copy.textContent = meta?.summary || (tools.length ? '已完成：' + tools.join('、') : '这条回复已完成。');
+  item.appendChild(copy); body.appendChild(item);
+  if (meta?.thought) {
+    const detail = document.createElement('button'); detail.className = 'summary-detail'; detail.textContent = '查看 Thought process ›';
+    detail.onclick = () => { sheets.summary.classList.remove('open'); openThoughtText(meta.thought); };
+    body.appendChild(detail);
+  }
+  sheets.summary.classList.add('open');
+}
+async function retryMessage(messageId, button) {
+  if (!messageId) { note('（这条回复还没有后端编号）', 'err'); return; }
+  button.disabled = true;
+  try {
+    const r = await fetch('api/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: messageId }) });
+    const d = await r.json();
+    if (!r.ok || d.ok === false) throw new Error(d.error || '重新生成失败');
+    note('（正在重新生成）');
+  } catch (error) { note('（重新生成失败：' + (error.message || '请重试') + '）', 'err'); button.disabled = false; }
+}
+function renderAssistantExtras(el, message, meta = {}) {
+  if (!el?.isConnected) return;
+  const host = el._row || el.parentElement;
+  if (!host) return;
+  host.querySelector('.msg-extras')?.remove();
+  const sources = extractSources(sourceTextFor(meta, message?.text || el._raw || el.textContent));
+  const extras = document.createElement('div'); extras.className = 'msg-extras';
+  if (sources.length) {
+    const sourceButton = document.createElement('button'); sourceButton.className = 'msg-sources';
+    sourceButton.append(icEl('globe', 17), document.createTextNode('Sources'));
+    sourceButton.onclick = () => openSources(sources); extras.appendChild(sourceButton);
+  }
+  if (meta.thought || (meta.toolIds || []).length) {
+    const summary = document.createElement('button'); summary.className = 'msg-summary';
+    summary.append(icEl('petal', 16), document.createTextNode('Summary'));
+    summary.onclick = () => openSummary(meta, message?.text || el._raw || ''); extras.appendChild(summary);
+  }
+  const actions = document.createElement('div'); actions.className = 'msg-actions';
+  const key = String(message?.seq || ('live-' + (el._raw || '').slice(0, 20) + '-' + host.offsetTop));
+  if (message?.seq && message.feedback) feedbackState.set(String(message.seq), message.feedback);
+  const make = (icon, title, fn, cls) => { const b = document.createElement('button'); b.className = 'msg-action' + (cls ? ' ' + cls : ''); b.title = title; b.appendChild(icEl(icon, 20)); b.onclick = fn; return b; };
+  actions.appendChild(make('copy', '复制', (e) => copyMessage(message?.text || el._raw || el.textContent || '', e.currentTarget)));
+  actions.appendChild(make('share', '转发', () => shareMessage(message?.text || el._raw || el.textContent || '', sources)));
+  const speech = make('play', '播放', (e) => speakMessage(message?.text || el._raw || el.textContent || '', key, e.currentTarget), 'speech'); speech.dataset.speech = key; actions.appendChild(speech);
+  const up = make('thumbUp', '赞', () => saveMessageFeedback(message?.seq, 'up')); up.dataset.feedback = 'up'; up.dataset.feedbackId = key; up.classList.toggle('on', feedbackState.get(key) === 'up'); actions.appendChild(up);
+  const down = make('thumbDown', '踩', () => saveMessageFeedback(message?.seq, 'down')); down.dataset.feedback = 'down'; down.dataset.feedbackId = key; down.classList.toggle('on', feedbackState.get(key) === 'down'); actions.appendChild(down);
+  actions.appendChild(make('refresh', '重新生成', (e) => retryMessage(message?.seq, e.currentTarget)));
+  extras.appendChild(actions); host.appendChild(extras);
 }
 function note(text, cls, sticky) {
   const [t1, t2] = toastSplit(text);
@@ -3069,6 +3461,8 @@ function escapeHtml(s) {
 function addToolUse(part) {
   petSet('typing');
   closeThink();
+  if (!activeTurnMeta) activeTurnMeta = { thought: '', toolIds: [], startedAt: Date.now() };
+  if (!activeTurnMeta.toolIds.includes(part.id)) activeTurnMeta.toolIds.push(part.id);
   toolInfo[part.id] = { name: part.name, input: part.input || {}, result: null, isError: false, done: false };
   if (!curGroup) {
     const r = row();
@@ -3203,6 +3597,7 @@ function renderSaid(msgs) {
   for (const m of msgs) {
     if (m.kind === 'me') { endThink(); addMe(m.text); }
     else if (m.kind === 'gu') {
+      const meta = { thought: turnThink?.text || '', toolIds: curGroup?.ids ? [...curGroup.ids] : [] };
       endThink();                    // 该说正文了，思考那段收工
       const el = ensureGu();
       el._raw = m.text;
@@ -3210,6 +3605,7 @@ function renderSaid(msgs) {
       el.textContent = m.text;
       trimOrphanTail(el);            // 库里的半截消息拖着「课」这种孤尾——历史这条路也要摘
       renderRich(el);
+      renderAssistantExtras(el, m, meta);
       guEl = null;                   // 每条各归各位，别粘成一坨
     } else if (m.kind === 'think') {
       // 一轮思考在库里是好几条记录（想一段、歇一下、再想）。以前这里每条
@@ -3445,7 +3841,11 @@ function handle(d) {
         el.removeAttribute('data-rich');
         trimOrphanTail(el);
         renderRich(el);
+        renderAssistantExtras(el, m, activeTurnMeta || {});
       }
+      const fallbackEls = Array.from(document.querySelectorAll('#log .gu')).slice(-src.length);
+      fallbackEls.forEach((el, i) => { if (!el.querySelector('.msg-extras')) renderAssistantExtras(el, src[i], activeTurnMeta || {}); });
+      activeTurnMeta = null;
     }).catch(() => {});
     setBusy(false);
     const notificationId = Number(d.notification_id || 0);
@@ -3898,7 +4298,10 @@ const sheets = {
   addDetail: document.getElementById('addDetailSheet'),
   tool: toolSheet,
   think: document.getElementById('thinkSheet'),
+  sources: document.getElementById('sourcesSheet'),
+  summary: document.getElementById('summarySheet'),
   todo: document.getElementById('todoSheet'),
+  tasks: document.getElementById('tasksSheet'),
   news: document.getElementById('newsSheet'),
   nook: document.getElementById('nookSheet'),
   nkanno: document.getElementById('nkAnnoSheet'),
@@ -5539,21 +5942,40 @@ document.getElementById('navTodo').onclick = () => { closeDrawer(); sheets.todo.
 
 async function loadTodos() {
   try {
-    const d = await (await fetch('api/todos', { cache: 'no-store' })).json();
+    const response = await fetch('api/todos', { cache: 'no-store' });
+    const d = await response.json();
     renderTodos(d);
   } catch {
-    todoBody.innerHTML = '<div class="todo-empty">清单拿不到，网抖了一下，再开一次试试</div>';
+    const cached = await window.DWELL_OFFLINE_STORE?.get('api/todos');
+    if (cached) renderTodos(cached);
+    else todoBody.innerHTML = '<div class="todo-empty">清单还没有本地快照，连接 Mac 后会自动保存</div>';
   }
 }
 async function todoAct(payload) {
+  const mutation = {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  };
   try {
-    const r = await fetch('api/todos', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    renderTodos(await r.json());
-  } catch { note('（没记上，再试一次）', 'err'); }
+    const r = await fetch('api/todos', mutation);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '清单没有更新');
+    if (d && d.ok === false) throw new Error(d.error || '清单没有更新');
+    lastTodoData = d; renderTodos(d); window.DWELL_OFFLINE_STORE?.set('api/todos', d);
+  } catch {
+    await window.DWELL_OFFLINE_STORE?.enqueue('api/todos', mutation);
+    const next = { ok: true, mine: [...(lastTodoData?.mine || [])], hers: [...(lastTodoData?.hers || [])] };
+    const key = payload.list === 'hers' ? 'hers' : 'mine';
+    const list = next[key];
+    if (payload.action === 'toggle') { const item = list.find(x => String(x.id) === String(payload.id)); if (item) item.done = !item.done; }
+    if (payload.action === 'del') next[key] = list.filter(x => String(x.id) !== String(payload.id));
+    if (payload.action === 'edit') { const item = list.find(x => String(x.id) === String(payload.id)); if (item) { item.text = payload.text; item.at = payload.at || ''; item.fixed = !!payload.fixed; } }
+    if (payload.action === 'add') list.push({ id: 'offline-' + Date.now(), text: payload.text, done: false, at: payload.at || '', fixed: !!payload.fixed, by: payload.by || (key === 'hers' ? 'her' : 'me'), created: Math.floor(Date.now() / 1000) });
+    lastTodoData = next; renderTodos(next); window.DWELL_OFFLINE_STORE?.set('api/todos', next);
+    note('（已保存在手机，连接恢复后再同步）');
+  }
 }
+let lastTodoData = null;
 function nowHM() {
   const n = new Date(Date.now() + (8 * 60 + new Date().getTimezoneOffset()) * 60000);
   return String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0');
@@ -5580,7 +6002,7 @@ function sortTodos(list) {
     return 0;
   });
 }
-function todoRow(t, list, canTouch) {
+function todoRow(t, list) {
   const r = document.createElement('div');
   r.className = 'hrow' + (t.done ? ' done' : '');
   const box = document.createElement('button');
@@ -5588,18 +6010,26 @@ function todoRow(t, list, canTouch) {
   box.innerHTML = t.done
     ? '<svg viewBox="0 0 20 20" width="20" height="20"><rect x="1.5" y="1.5" width="17" height="17" rx="5.5" fill="var(--sage)"/><path d="M6 10.4l2.7 2.7 5.4-5.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     : '<svg viewBox="0 0 20 20" width="20" height="20"><rect x="1.5" y="1.5" width="17" height="17" rx="5.5" fill="none" stroke="currentColor" stroke-width="1.8" opacity=".45"/></svg>';
-  if (canTouch) box.onclick = () => todoAct({ action: 'toggle', list, id: t.id });
-  else { box.disabled = true; box.style.opacity = '.6'; }
+  box.setAttribute('aria-label', t.done ? '标记未完成' : '标记完成');
+  box.onclick = (e) => { e.stopPropagation(); todoAct({ action: 'toggle', list, id: t.id }); };
   const tx = document.createElement('div');
   tx.className = 'tx';
-  tx.textContent = t.text;
+  const title = document.createElement('span');
+  title.className = 'todo-title';
+  title.textContent = t.text;
+  tx.appendChild(title);
   const small = document.createElement('small');
   const bits = [];
   if (t.fixed) bits.push('\u6bcf\u5929');
   if (!t.at && t.created) bits.push(stampOf(t.created) + ' \u8bb0\u7684');
-  bits.push(t.by === 'gu' ? '\u987e\u5c7f' : '\u6b23\u6b23');
+  bits.push(t.by === 'her' || t.by === 'claude' ? 'Claude' : 'ShiJie');
   small.textContent = bits.join(' \u00b7 ');
   tx.appendChild(small);
+  tx.setAttribute('role', 'button');
+  tx.tabIndex = 0;
+  tx.title = '点击编辑';
+  tx.onclick = () => openTodoEditor(t, list, r);
+  tx.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTodoEditor(t, list, r); } };
   r.append(box, tx);
   if (t.at) {
     const v = document.createElement('span');
@@ -5607,19 +6037,51 @@ function todoRow(t, list, canTouch) {
     v.textContent = t.at;
     r.appendChild(v);
   }
-  if (canTouch) {
-    const del = document.createElement('button');
-    del.className = 'hx';
-    del.appendChild(icEl('trash', 15));
-    del.onclick = () => todoAct({ action: 'del', list, id: t.id });
-    r.appendChild(del);
-  }
+  const del = document.createElement('button');
+  del.className = 'hx';
+  del.setAttribute('aria-label', '删除');
+  del.appendChild(icEl('trash', 15));
+  del.onclick = (e) => { e.stopPropagation(); todoAct({ action: 'del', list, id: t.id }); };
+  r.appendChild(del);
   return r;
 }
+function openTodoEditor(t, list, r) {
+  if (!r || r.dataset.editing === '1') return;
+  r.dataset.editing = '1';
+  r.innerHTML = '';
+  const edit = document.createElement('div');
+  edit.className = 'todo-edit';
+  const input = document.createElement('input');
+  input.type = 'text'; input.value = t.text || ''; input.maxLength = 300; input.setAttribute('aria-label', '清单内容');
+  const time = document.createElement('input');
+  time.type = 'time'; time.value = t.at || ''; time.setAttribute('aria-label', '时间');
+  const daily = document.createElement('button');
+  daily.className = 'chip' + (t.fixed ? ' on' : ''); daily.textContent = '每天';
+  let fixed = !!t.fixed;
+  daily.onclick = () => { fixed = !fixed; daily.classList.toggle('on', fixed); };
+  const cancel = document.createElement('button');
+  cancel.className = 'cancel'; cancel.textContent = '取消';
+  cancel.onclick = () => lastTodoData && renderTodos(lastTodoData);
+  const save = document.createElement('button');
+  save.className = 'go'; save.textContent = '保存';
+  const commit = () => {
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    todoAct({ action: 'edit', list, id: t.id, text, at: time.value, fixed });
+  };
+  save.onclick = commit;
+  input.onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) commit(); if (e.key === 'Escape') cancel.click(); };
+  edit.append(input, time, daily, cancel, save);
+  r.appendChild(edit);
+  input.focus(); input.select();
+}
 function renderTodos(d) {
+  d = { ok: true, mine: Array.isArray(d?.mine) ? d.mine : [], hers: Array.isArray(d?.hers) ? d.hers : [] };
+  lastTodoData = d;
   const keepTop = todoBody.scrollTop;
   const dt = new Date(Date.now() + (8 * 60 + new Date().getTimezoneOffset()) * 60000);
-  const total = d.hers.length, paid = d.hers.filter(t => t.done).length;
+  const allTodos = [...d.mine, ...d.hers];
+  const total = allTodos.length, paid = allTodos.filter(t => t.done).length;
   const pct = total ? paid / total : 0;
 
   todoBody.innerHTML = '';
@@ -5650,11 +6112,11 @@ function renderTodos(d) {
     return el;
   };
 
-  todoBody.appendChild(sect('\u8001\u5a46\u7684'));
+  todoBody.appendChild(sect('Claude 的清单'));
   const c1 = document.createElement('div');
   c1.className = 'hcard';
-  if (!d.hers.length) c1.appendChild(emptyRow('\u7a7a\u7684\u2014\u2014\u7b49\u8001\u516c\u5e03\u7f6e\uff0c\u6216\u8005\u81ea\u5df1\u5199\u4e00\u6761'));
-  else sortTodos(d.hers).forEach(t => c1.appendChild(todoRow(t, 'hers', true)));
+  if (!d.hers.length) c1.appendChild(emptyRow('暂无项目，点击下面新增一项'));
+  else sortTodos(d.hers).forEach(t => c1.appendChild(todoRow(t, 'hers')));
 
   const plus = document.createElement('button');
   plus.className = 'hplus';
@@ -5689,17 +6151,17 @@ function renderTodos(d) {
   c1.append(plus, add);
   todoBody.appendChild(c1);
 
-  todoBody.appendChild(sect('\u987e\u5c7f\u7684\u6d3b'));
+  todoBody.appendChild(sect('ShiJie 的清单'));
   const c2 = document.createElement('div');
   c2.className = 'hcard';
-  if (!d.mine.length) c2.appendChild(emptyRow('\u4ed6\u8fd9\u4f1a\u513f\u624b\u4e0a\u6ca1\u6302\u7740\u6d3b'));
-  else sortTodos(d.mine).forEach(t => c2.appendChild(todoRow(t, 'mine', false)));
+  if (!d.mine.length) c2.appendChild(emptyRow('暂无项目'));
+  else sortTodos(d.mine).forEach(t => c2.appendChild(todoRow(t, 'mine')));
   todoBody.appendChild(c2);
 
   const foot = document.createElement('div');
   foot.className = 'hfoot';
-  foot.innerHTML = '<div style="letter-spacing:.06em;margin-bottom:4px">\u4eca\u5929\u4e5f\u8f9b\u82e6\u4e86\uff0c\u6b23\u6b23</div>' +
-    'YU \u00b7 XIN GENERAL STORE \u00b7 #' + codeOf(dt).replace(/ /g, '') +
+  foot.innerHTML = '<div style="letter-spacing:.06em;margin-bottom:4px">ShiJie · Claude</div>' +
+    '#' + codeOf(dt).replace(/ /g, '') +
     String(total).padStart(2, '0') + String(paid).padStart(2, '0');
   todoBody.appendChild(foot);
   todoBody.scrollTop = keepTop;
@@ -5708,51 +6170,157 @@ function codeOf(dt) {   // 票号：年月日拆开，像真小票那样
   const y = String(dt.getFullYear()).slice(2);
   return y + ' ' + String(dt.getMonth() + 1).padStart(2, '0') + ' ' + String(dt.getDate()).padStart(2, '0');
 }
+
+const tasksBody = document.getElementById('tasksBody');
+document.getElementById('navTasks').onclick = () => { closeDrawer(); sheets.tasks.classList.add('open'); loadDesktopTasks(); };
+function taskDate(value) {
+  if (!value) return '尚未运行';
+  try { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch { return String(value); }
+}
+function taskResultLabel(value) {
+  return ({ success: '成功', succeeded: '成功', failed: '失败', skipped: '跳过', unknown: '结果未记录' })[value] || '结果未记录';
+}
+function renderDesktopTasks(data) {
+  tasksBody.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'sh-head';
+  const title = document.createElement('h1'); title.textContent = '定时任务';
+  const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = data.source === 'claude-desktop' ? 'Claude Desktop · 只读查看与受控操作' : 'Claude Desktop 未连接';
+  head.append(title, sub); tasksBody.appendChild(head);
+  const noteEl = document.createElement('div'); noteEl.className = 'task-note';
+  noteEl.textContent = data.control?.available ? '操作会交给 Mac 上的 Claude Desktop 执行，手机不会直接改任务文件。' : '当前只能查看任务。Mac 侧控制桥尚未就绪，暂停、恢复和立即运行会保持禁用，不会假装成功。';
+  tasksBody.appendChild(noteEl);
+  if (!data.items?.length) { const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = data.source === 'claude-desktop' ? '还没有定时任务' : '没有读到 Claude Desktop 的任务文件'; tasksBody.appendChild(empty); return; }
+  data.items.forEach(task => {
+    const card = document.createElement('div'); card.className = 'task-card';
+    const name = document.createElement('div'); name.className = 'task-title'; name.textContent = task.name || task.id;
+    const desc = document.createElement('div'); desc.className = 'task-description'; desc.textContent = task.description || '';
+    const meta = document.createElement('div'); meta.className = 'task-meta';
+    const status = document.createElement('span'); status.className = 'task-status ' + (task.enabled ? 'on' : 'off'); status.textContent = task.enabled ? '● 已启用' : '○ 已暂停';
+    const schedule = document.createElement('span'); schedule.textContent = '周期 · ' + (task.schedule || '未设置');
+    const last = document.createElement('span'); last.textContent = '上次 · ' + taskDate(task.lastRunAt);
+    const result = document.createElement('span'); result.textContent = '结果 · ' + taskResultLabel(task.lastResult);
+    meta.append(status, schedule, last, result);
+    const actions = document.createElement('div'); actions.className = 'task-actions';
+    const run = document.createElement('button'); run.textContent = '立即运行'; run.disabled = !data.control?.available; run.onclick = () => desktopTaskAction(task.id, 'run', run);
+    const toggle = document.createElement('button'); toggle.textContent = task.enabled ? '暂停' : '恢复'; toggle.disabled = !data.control?.available; toggle.onclick = () => desktopTaskAction(task.id, task.enabled ? 'pause' : 'resume', toggle);
+    actions.append(run, toggle); card.append(name, desc, meta, actions); tasksBody.appendChild(card);
+  });
+}
+async function loadDesktopTasks() {
+  try {
+    const r = await fetch('api/desktop-tasks', { cache: 'no-store' });
+    const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '任务读取失败');
+    renderDesktopTasks(data);
+  } catch (error) {
+    tasksBody.innerHTML = '<div class="todo-empty"></div>';
+    tasksBody.querySelector('.todo-empty').textContent = '定时任务读不到：' + (error.message || '请检查 Mac 端');
+  }
+}
+async function desktopTaskAction(id, action, button) {
+  button.disabled = true;
+  try {
+    const r = await fetch('api/desktop-tasks/' + encodeURIComponent(id) + '/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || 'Mac 端没有确认');
+    await loadDesktopTasks();
+  } catch (error) { note('（定时任务没有执行：' + (error.message || '请检查 Mac 端') + '）', 'err'); button.disabled = false; }
+}
+
 document.querySelectorAll('[data-close]').forEach(el => {
   el.onclick = () => {
     const k = el.dataset.close;
     if (k === 'drawer') return closeDrawer();
     if (k === 'tool') { sheetStack = []; }
     const wrap = sheets[k];
+    if (k === 'add') return closeAddSheet();
+    if (!wrap) return;
+    if (wrap._closeSheet) return wrap._closeSheet();
     wrap.classList.remove('open');
     if (wrap.classList.contains('page')) openDrawer();
   };
 });
 
-Object.entries(sheets).forEach(([k, wrap]) => {
+function bindSheetDismiss(k, wrap) {
   const sheet = wrap.querySelector('.sheet');
-  if (!sheet) return;
-  if (k === 'add') return; // Add to chat 使用下面的可展开高度拖拽，避免和普通弹层的关闭手势冲突。
-  let startY = 0, curY = 0, dragging = false;
+  if (!sheet || k === 'add') return;
+  const page = wrap.classList.contains('page');
+  const body = sheet.querySelector('.body');
+  let drag = null;
+  let frame = 0;
+  const reset = () => {
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    sheet.classList.remove('dragging');
+    sheet.style.transition = 'transform .26s cubic-bezier(.22, 1, .36, 1)';
+    sheet.style.transform = '';
+    setTimeout(() => { sheet.style.transition = ''; }, 300);
+  };
   const doClose = () => {
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
     if (k === 'tool') sheetStack = [];
     wrap.classList.remove('open');
+    sheet.classList.remove('dragging');
+    sheet.style.transform = '';
+    sheet.style.transition = '';
     if (wrap.classList.contains('page')) openDrawer();
   };
-  sheet.addEventListener('touchstart', (e) => {
-    if (!e.target.closest('.grabber') && !e.target.closest('.head')) return;
-    if (e.target.closest('.hbtn')) return;          // 按钮的事归按钮
-    dragging = true; startY = e.touches[0].clientY; curY = 0;
-    sheet.style.transition = 'none';
-  }, { passive: true });
-  sheet.addEventListener('touchmove', (e) => {
-    if (!dragging) return;
-    const dy = e.touches[0].clientY - startY;
-    curY = dy;
-    const shown = dy >= 0 ? dy : Math.max(dy / 3, -34);
-    sheet.style.transform = 'translateY(' + shown + 'px)';
-  }, { passive: true });
-  sheet.addEventListener('touchend', () => {
-    if (!dragging) return;
-    dragging = false;
-    sheet.style.transition = 'transform .2s ease';
-    if (curY > 110) {
-      sheet.style.transform = 'translateY(105%)';
-      setTimeout(() => { doClose(); sheet.style.transform = ''; sheet.style.transition = ''; }, 180);
-    } else {
-      sheet.style.transform = '';
-      setTimeout(() => { sheet.style.transition = ''; }, 220);
+  wrap._closeSheet = doClose;
+  sheet.style.touchAction = 'pan-y';
+  const interactive = (target) => target?.closest?.('button,a,input,textarea,select,[contenteditable="true"]');
+  sheet.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (interactive(e.target)) return;
+    if (page && !e.target.closest('.head, .grabber')) return;
+    drag = { id: e.pointerId, y: e.clientY, lastY: e.clientY, started: performance.now(), moved: false, native: false };
+  });
+  sheet.addEventListener('pointermove', (e) => {
+    if (!drag || drag.id !== e.pointerId) return;
+    const dy = e.clientY - drag.y;
+    drag.lastY = e.clientY;
+    if (!drag.moved && Math.abs(dy) < 7) return;
+    if (!drag.moved && !page && body && body.scrollTop > 0) { drag.native = true; return; }
+    if (drag.native) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      try { sheet.setPointerCapture(e.pointerId); } catch {}
+      sheet.classList.add('dragging');
+      sheet.style.transition = 'none';
     }
+    if (!frame) {
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (!drag || !drag.moved) return;
+        const nowDy = drag.lastY - drag.y;
+        const shown = nowDy >= 0 ? nowDy : Math.max(nowDy / 3, -34);
+        sheet.style.transform = 'translate3d(0,' + shown.toFixed(2) + 'px,0)';
+      });
+    }
+    e.preventDefault();
+  });
+  const end = (e) => {
+    if (!drag || drag.id !== e.pointerId) return;
+    const d = drag; drag = null;
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    const dy = e.clientY - d.y;
+    if (!d.moved || d.native) { reset(); return; }
+    const velocity = dy / Math.max(1, performance.now() - d.started);
+    if (dy > Math.max(96, sheet.getBoundingClientRect().height * .18) || velocity > .9) {
+      sheet.style.transition = 'transform .24s cubic-bezier(.4,0,.2,1)';
+      sheet.style.transform = 'translate3d(0,105%,0)';
+      setTimeout(doClose, 250);
+    } else reset();
+    e.preventDefault();
+  };
+  sheet.addEventListener('pointerup', end);
+  sheet.addEventListener('pointercancel', end);
+}
+Object.entries(sheets).forEach(([k, wrap]) => bindSheetDismiss(k, wrap));
+
+/* 防止用户从弹层内拖动时把页面自身带走。 */
+Object.entries(sheets).forEach(([k, wrap]) => {
+  if (k === 'add') return;
+  const sheet = wrap.querySelector('.sheet');
+  sheet?.addEventListener('transitionend', () => {
+    if (!wrap.classList.contains('open')) sheet.style.transform = '';
   });
 });
 
@@ -6060,13 +6628,6 @@ document.getElementById('gongInput').addEventListener('input', (e) => {
 document.getElementById('gongInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendGong(); }
 });
-document.getElementById('recGong').onclick = () => {
-  closeDrawer(); sheets.gong.classList.add('open'); loadGong();
-};
-document.getElementById('recGu').onclick = () => {
-  closeDrawer(); sheets.chats.classList.add('open'); loadChats();
-};
-
 /* ---------- 健康 ---------- */
 const HEALTH_GROUPS = [
   ['睡得怎么样', [
@@ -6207,11 +6768,14 @@ async function loadApi() {
   let st = {};
   try { st = await (await fetch('api/authmode', { cache: 'no-store' })).json(); } catch (e) {}
   const on = st.mode === 'api';
-  const savedBase = window.DWELL_API_BASE || '';
+  const savedLan = window.DWELL_LAN_BASE || (!window.DWELL_REMOTE_BASE ? (window.DWELL_API_BASE || '') : '');
+  const savedRemote = window.DWELL_REMOTE_BASE || '';
   b.innerHTML =
-    `<div class="sh-head"><h1>连接</h1><div class="sub">手机通过这个地址找到 Mac 上的 dwell 服务</div></div>`
-    + `<div class="ap-lb">后端地址</div>`
-    + `<input class="ap-in" id="dwellEndpoint" placeholder="http://192.168.1.10:8787">`
+    `<div class="sh-head"><h1>连接</h1><div class="sub">手机优先走局域网，离开家后切 Cloudflare</div></div>`
+    + `<div class="ap-lb">局域网地址（优先）</div>`
+    + `<input class="ap-in" id="dwellLanEndpoint" placeholder="http://192.168.1.10:8787">`
+    + `<div class="ap-lb">Cloudflare 远程地址（外网）</div>`
+    + `<input class="ap-in" id="dwellRemoteEndpoint" placeholder="https://dwell.example.com">`
     + `<div class="ap-lb">访问令牌（可选）</div>`
     + `<input class="ap-in" id="dwellToken" type="password" placeholder="DWELL_AUTH_TOKEN">`
     + `<div class="ap-btns"><button class="ap-b go" id="dwellConnect">保存并连接</button></div>`
@@ -6234,41 +6798,57 @@ async function loadApi() {
     + `<b>OpenRouter 的填法</b>：地址 https://openrouter.ai/api，令牌是它的 key，`
     + `模型名直接写 anthropic/claude-sonnet-4 这类 ID，不要加波浪号。</div>`;
 
-  document.getElementById('dwellEndpoint').value = savedBase;
+  document.getElementById('dwellLanEndpoint').value = savedLan;
+  document.getElementById('dwellRemoteEndpoint').value = savedRemote;
   document.getElementById('dwellConnect').onclick = async () => {
-    const endpoint = document.getElementById('dwellEndpoint').value.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+    const lanEndpoint = document.getElementById('dwellLanEndpoint').value.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+    const remoteEndpoint = document.getElementById('dwellRemoteEndpoint').value.trim().replace(/\/+$/, '').replace(/\/api$/, '');
     const token = document.getElementById('dwellToken').value.trim();
     const msg = document.getElementById('dwellMsg');
-    if (!endpoint || !/^https?:\/\//i.test(endpoint)) {
-      msg.textContent = '请填 Mac 的 http://地址';
+    const candidates = [lanEndpoint, remoteEndpoint].filter((value, index, all) => value && all.indexOf(value) === index);
+    if (!candidates.length || candidates.some(value => !/^https?:\/\//i.test(value))) {
+      msg.textContent = '请至少填一个有效的 http(s) 地址';
       msg.className = 'ap-msg on bad';
       return;
     }
     const oldEndpoint = window.DWELL_API_BASE;
+    const oldLan = window.DWELL_LAN_BASE || '';
+    const oldRemote = window.DWELL_REMOTE_BASE || '';
     const oldToken = window.DWELL_API_TOKEN || '';
     try {
-      localStorage.setItem('dwellApiBase', endpoint);
+      localStorage.setItem('dwellLanBase', lanEndpoint);
+      localStorage.setItem('dwellRemoteBase', remoteEndpoint);
       if (token) localStorage.setItem('dwellApiToken', token);
       else localStorage.removeItem('dwellApiToken');
     } catch (e) {}
     msg.textContent = '正在测试连接…';
     msg.className = 'ap-msg on';
     try {
-      const response = await (window.DWELL_RAW_FETCH || fetch)(endpoint + '/api/health', {
-        cache: 'no-store',
-        headers: token ? { 'X-Dwell-Token': token } : {},
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(response.status === 401 ? '访问令牌不对' : '这不是 dwell 后端');
+      let endpoint = '';
+      let lastError = null;
+      for (const candidate of candidates) {
+        try {
+          const response = await (window.DWELL_RAW_FETCH || fetch)(candidate + '/api/health', { cache: 'no-store', headers: token ? { 'X-Dwell-Token': token } : {} });
+          const data = await response.json();
+          if (response.ok && data.ok) { endpoint = candidate; break; }
+          lastError = new Error(response.status === 401 ? '访问令牌不对' : '这不是 dwell 后端');
+        } catch (error) { lastError = error; }
+      }
+      if (!endpoint) throw lastError || new Error('两个地址都没有响应');
+      localStorage.setItem('dwellApiBase', endpoint);
+      window.DWELL_LAN_BASE = lanEndpoint; window.DWELL_REMOTE_BASE = remoteEndpoint; window.DWELL_API_BASE = endpoint; window.DWELL_API_TOKEN = token;
       if (window.Android?.configureBackend) window.Android.configureBackend(endpoint, token);
       msg.textContent = '连接成功，正在进入…';
       setTimeout(() => location.reload(), 260);
     } catch (error) {
       try {
         if (oldEndpoint) localStorage.setItem('dwellApiBase', oldEndpoint); else localStorage.removeItem('dwellApiBase');
+        if (oldLan) localStorage.setItem('dwellLanBase', oldLan); else localStorage.removeItem('dwellLanBase');
+        if (oldRemote) localStorage.setItem('dwellRemoteBase', oldRemote); else localStorage.removeItem('dwellRemoteBase');
         if (oldToken) localStorage.setItem('dwellApiToken', oldToken); else localStorage.removeItem('dwellApiToken');
+        window.DWELL_API_BASE = oldEndpoint; window.DWELL_LAN_BASE = oldLan; window.DWELL_REMOTE_BASE = oldRemote; window.DWELL_API_TOKEN = oldToken;
       } catch {}
-      msg.textContent = '没连上：' + (error.message || '请检查地址、Wi-Fi 和令牌');
+      msg.textContent = '没连上：' + (error.message || '请检查局域网、Cloudflare 和令牌');
       msg.className = 'ap-msg on bad';
     }
   };
@@ -6797,6 +7377,7 @@ async function pickEffort(e) {
 /* ---------- 添加照片和文件 ---------- */
 const addSheetEl = document.getElementById('addSheet');
 const addPanel = addSheetEl.querySelector('.sheet');
+const addSheetBody = addPanel.querySelector('.body');
 const addGrabber = document.getElementById('addGrabber');
 let addExpanded = false;
 let addDrag = null;
@@ -6805,10 +7386,26 @@ let suppressAddClick = false;
 let addDragFrame = 0;
 
 function addCollapsedHeight() {
-  return Math.min(Math.round(window.innerHeight * .47), 560);
+  return Math.min(Math.round(window.innerHeight * .47), addMaxHeight() - 1);
 }
-function addExpandedHeight() {
-  return Math.max(addCollapsedHeight() + 1, Math.round(window.innerHeight - 48));
+function addMaxHeight() {
+  const vv = window.visualViewport;
+  const topGap = Math.max(48, (vv?.offsetTop || 0) + 48);
+  return Math.max(300, Math.round((vv?.height || window.innerHeight) - topGap));
+}
+function addCollapsedOffset() {
+  return Math.max(0, addMaxHeight() - addCollapsedHeight());
+}
+function addCurrentOffset() {
+  const m = addPanel.style.transform.match(/translate3d\(0,\s*(-?[\d.]+)px/);
+  return m ? Number(m[1]) : (addExpanded ? 0 : addCollapsedOffset());
+}
+function setAddOffset(offset) {
+  const max = addMaxHeight() + 120;
+  const next = Math.max(0, Math.min(max, Number(offset) || 0));
+  addPanel.style.transform = 'translate3d(0, ' + next.toFixed(2) + 'px, 0)';
+  const collapsed = addCollapsedOffset();
+  addSheetEl.classList.toggle('expanded', next < collapsed * .45);
 }
 function resetAddSheetState() {
   addAnimationId++;
@@ -6816,10 +7413,10 @@ function resetAddSheetState() {
   addDrag = null;
   addExpanded = false;
   addSheetEl.classList.remove('expanded', 'dragging');
-  addPanel.style.height = '';
   addPanel.style.transform = '';
   addPanel.style.transition = '';
   addPanel.style.willChange = '';
+  addSheetBody.scrollTop = 0;
 }
 function closeAddSheet() {
   addSheetEl.classList.remove('open');
@@ -6829,11 +7426,10 @@ function dismissAddSheet() {
   const id = ++addAnimationId;
   if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
   addDrag = null;
-  addSheetEl.classList.remove('expanded');
   addSheetEl.classList.add('dragging');
-  addPanel.style.transition = 'height .24s cubic-bezier(.4, 0, .2, 1)';
-  addPanel.style.willChange = 'height';
-  addPanel.style.height = '0px';
+  addPanel.style.transition = 'transform .24s cubic-bezier(.4, 0, .2, 1)';
+  addPanel.style.willChange = 'transform';
+  setAddOffset(addMaxHeight() + 80);
   setTimeout(() => {
     if (id !== addAnimationId) return;
     closeAddSheet();
@@ -6842,46 +7438,40 @@ function dismissAddSheet() {
 function openAddSheet() {
   resetAddSheetState();
   addSheetEl.classList.add('open');
+  addPanel.style.transform = 'translate3d(0, ' + addCollapsedOffset() + 'px, 0)';
+  requestAnimationFrame(() => { if (addSheetEl.classList.contains('open')) setAddOffset(addCollapsedOffset()); });
   refreshAddOptions();
 }
 function settleAddSheet(expanded) {
   if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
-  const current = addPanel.getBoundingClientRect().height;
-  const target = expanded ? addExpandedHeight() : addCollapsedHeight();
   const id = ++addAnimationId;
   addExpanded = expanded;
   addSheetEl.classList.toggle('expanded', expanded);
   addSheetEl.classList.remove('dragging');
-  addPanel.style.transition = 'none';
-  addPanel.style.willChange = 'height';
-  addPanel.style.height = current + 'px';
-  void addPanel.offsetHeight;
-  requestAnimationFrame(() => {
-    if (id !== addAnimationId) return;
-    addPanel.style.transition = 'height .34s cubic-bezier(.22, 1, .36, 1)';
-    addPanel.style.height = target + 'px';
-  });
+  addPanel.style.transition = 'transform .3s cubic-bezier(.22, 1, .36, 1)';
+  setAddOffset(expanded ? 0 : addCollapsedOffset());
   setTimeout(() => {
     if (id !== addAnimationId) return;
-    addPanel.style.height = '';
     addPanel.style.transition = '';
     addPanel.style.willChange = '';
   }, 380);
 }
-function applyAddDragHeight(drag) {
+function applyAddDrag(drag) {
   const dy = drag.lastY - drag.startY;
-  const next = Math.max(addCollapsedHeight(), Math.min(addExpandedHeight(), drag.startHeight - dy));
-  addPanel.style.height = next + 'px';
+  setAddOffset(drag.startOffset + dy);
 }
 function addPointerDown(e) {
   if (!addSheetEl.classList.contains('open')) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (e.target.closest('button, input, textarea, select, a')) return;
   addDrag = {
     id: e.pointerId,
     startY: e.clientY,
     lastY: e.clientY,
-    startHeight: addPanel.getBoundingClientRect().height,
-    moved: false
+    startOffset: addCurrentOffset(),
+    moved: false,
+    nativeScroll: false,
+    startedAt: performance.now()
   };
 }
 function addPointerMove(e) {
@@ -6889,6 +7479,16 @@ function addPointerMove(e) {
   const dy = e.clientY - addDrag.startY;
   addDrag.lastY = e.clientY;
   if (!addDrag.moved && Math.abs(dy) < 8) return;
+  if (!addDrag.moved && addExpanded && e.target.closest('.body')) {
+    const atTop = addSheetBody.scrollTop <= 0;
+    const atBottom = addSheetBody.scrollTop + addSheetBody.clientHeight >= addSheetBody.scrollHeight - 1;
+    const wantsNativeScroll = (dy > 0 && !atTop) || (dy < 0 && !atBottom);
+    if (wantsNativeScroll) {
+      addDrag.nativeScroll = true;
+      return;
+    }
+  }
+  if (addDrag.nativeScroll) return;
   if (!addDrag.moved) {
     addDrag.moved = true;
     try { addPanel.setPointerCapture(e.pointerId); } catch {}
@@ -6899,7 +7499,7 @@ function addPointerMove(e) {
     const drag = addDrag;
     addDragFrame = requestAnimationFrame(() => {
       addDragFrame = 0;
-      if (addDrag === drag && drag.moved) applyAddDragHeight(drag);
+      if (addDrag === drag && drag.moved) applyAddDrag(drag);
     });
   }
   e.preventDefault();
@@ -6909,9 +7509,9 @@ function addPointerEnd(e) {
   const drag = addDrag;
   drag.lastY = e.clientY;
   if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
-  if (drag.moved) applyAddDragHeight(drag);
+  if (drag.moved) applyAddDrag(drag);
   addDrag = null;
-  if (!drag.moved) {
+  if (!drag.moved || drag.nativeScroll) {
     addSheetEl.classList.remove('dragging');
     addPanel.style.transition = '';
     return;
@@ -6919,20 +7519,26 @@ function addPointerEnd(e) {
   suppressAddClick = true;
   setTimeout(() => { suppressAddClick = false; }, 140);
   const dy = e.clientY - drag.startY;
-  const collapseDistance = Math.max(260, (addExpandedHeight() - addCollapsedHeight()) * .74);
-  if ((!addExpanded && dy > 80) || (addExpanded && dy > collapseDistance)) {
+  const elapsed = Math.max(1, performance.now() - drag.startedAt);
+  const velocity = dy / elapsed;
+  const collapseDistance = addCollapsedOffset();
+  const closeDistance = collapseDistance + 100;
+  if ((!addExpanded && (dy > 100 || velocity > .8)) ||
+      (addExpanded && (dy > closeDistance || (velocity > 1.15 && dy > collapseDistance * .7)))) {
     dismissAddSheet();
     e.preventDefault();
     return;
   }
-  const shouldExpand = addExpanded ? dy < 80 : dy < -80;
+  const shouldExpand = addExpanded
+    ? !(dy > collapseDistance * .55 || velocity > .75)
+    : !(dy > 38 || velocity > .55);
   settleAddSheet(shouldExpand);
   e.preventDefault();
 }
 addPanel.addEventListener('pointerdown', addPointerDown);
-addSheetEl.addEventListener('pointermove', addPointerMove);
-addSheetEl.addEventListener('pointerup', addPointerEnd);
-addSheetEl.addEventListener('pointercancel', addPointerEnd);
+addPanel.addEventListener('pointermove', addPointerMove);
+addPanel.addEventListener('pointerup', addPointerEnd);
+addPanel.addEventListener('pointercancel', addPointerEnd);
 addPanel.addEventListener('click', (e) => {
   if (!suppressAddClick) return;
   e.preventDefault();
@@ -6940,6 +7546,12 @@ addPanel.addEventListener('click', (e) => {
 }, true);
 document.querySelectorAll('#addSheet [data-close="add"]').forEach(el => el.addEventListener('click', resetAddSheetState));
 document.getElementById('plusBtn').onclick = openAddSheet;
+function syncAddSheetViewport() {
+  if (!addSheetEl.classList.contains('open') || addDrag) return;
+  setAddOffset(addExpanded ? 0 : addCollapsedOffset());
+}
+window.addEventListener('resize', syncAddSheetViewport);
+window.visualViewport?.addEventListener('resize', syncAddSheetViewport);
 const fCamera = document.getElementById('fCamera');
 const fPhoto = document.getElementById('fPhoto');
 const fFile = document.getElementById('fFile');
@@ -7140,8 +7752,8 @@ document.addEventListener('touchend', (e) => {
 (() => {
   const wrap = document.getElementById('lockWrap');
   if (!wrap) return;
-  let skip = false;
-  try { skip = sessionStorage.getItem('skipLock') === '1'; sessionStorage.removeItem('skipLock'); }
+  let skip = new URLSearchParams(location.search).get('demo') === '1' || !!window.DWELL_DEMO;
+  try { skip = skip || sessionStorage.getItem('skipLock') === '1'; sessionStorage.removeItem('skipLock'); }
   catch (e) {}
   if (skip) { wrap.remove(); return; }
 

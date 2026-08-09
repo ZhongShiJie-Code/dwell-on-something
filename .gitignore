@@ -6,3 +6,7 @@ android/app/build/
 # IDE metadata
 .idea/
 *.iml
+
+# Local Cloudflare Tunnel credentials/config
+deploy/cloudflared/config.yml
+deploy/cloudflared/*.json

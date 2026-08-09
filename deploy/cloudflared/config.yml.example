@@ -1,0 +1,9 @@
+# Cloudflare Tunnel example for dwell.
+# Replace the placeholders locally; never commit the real credentials file.
+tunnel: <TUNNEL_UUID>
+credentials-file: /Users/<mac-user>/.cloudflared/<TUNNEL_UUID>.json
+
+ingress:
+  - hostname: dwell.example.com
+    service: http://127.0.0.1:8787
+  - service: http_status:404
