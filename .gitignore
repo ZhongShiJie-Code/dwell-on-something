@@ -1,0 +1,8 @@
+# Android/Gradle machine and build output
+android/.gradle/
+android/local.properties
+android/app/build/
+
+# IDE metadata
+.idea/
+*.iml

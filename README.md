@@ -76,3 +76,21 @@
 不是让谁拿它去卖。
 
 引用到的那几个开源项目各有各的授权，见 [00-原作者名单](00-原作者名单.md)。
+
+## Android APK
+
+前端已经封装成一个可安装的 Android WebView 应用，APK 在这里：
+
+- [dwell-debug.apk](dist/dwell-debug.apk)
+- Android 工程：[android](android/)
+
+APK 内置 `web/` 前端，当前打开的是演示模式，不需要后端也能运行。
+在 Android 手机上下载 APK 后允许安装即可；开发机也可以执行：
+
+```bash
+cd android
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug
+```
+
+这是个人测试用的 debug APK，不是 Google Play 发布包；Claude Code 的真实连接层仍需后续接入本地适配服务。

@@ -1,8 +1,19 @@
 # 前端源码
 
 `index.html` 就是**完整的前端**——不是演示片段。
-HTML、CSS、JavaScript 全在这一个文件里，四千多行，没有构建步骤、
+HTML、CSS、JavaScript 全在这一个文件里，没有构建步骤、
 没有依赖、没有 node_modules。改完刷新就生效。
+
+现在这份前端也带了 Android/PWA 所需的 `manifest.json`、`sw.js` 和图标。
+浏览器版可以添加到主屏幕；仓库根目录的 `android/` 工程会把整个 `web/`
+目录直接打进 APK，前端只维护一份。
+
+APK 构建：
+
+```bash
+cd ../android
+./gradlew assembleDebug
+```
 
 ## 直接打开就能看
 

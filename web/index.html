@@ -6,12 +6,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#262624" media="(prefers-color-scheme: dark)">
-<title>Claude</title>
+<meta name="description" content="dwell：一个住在这里的 Claude Code 前端。">
+<meta name="application-name" content="dwell">
+<meta name="color-scheme" content="light dark">
+<title>dwell · Claude Code</title>
 
-<link rel="icon" href="icons/favicon-64.png" sizes="64x64" type="image/png">
-<link rel="icon" href="icons/favicon.ico" sizes="any">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="manifest" href="manifest.json">
+<link rel="icon" href="./icons/icon.svg" sizes="any" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/icon.svg">
+<link rel="manifest" href="./manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Claude">
@@ -26,6 +28,15 @@
     var t = localStorage.getItem('homeTheme') || 'auto';
     if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
   } catch (e) {}
+})();
+</script>
+<script>
+/* 浏览器版注册离线壳；file:// 和 APK 内置 WebView 不需要这一层。 */
+(function () {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+  });
 })();
 </script>
 <style>
@@ -1705,6 +1716,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         <button class="grow" id="wakeRow"><span class="ic" data-i="alarm"></span>夜里让他自己醒<span class="sw wait" id="wakeSw"></span></button>
         <button class="grow" id="rewakeRow"><span class="ic" data-i="refresh"></span>叫他重新醒一次<span class="val" id="rewakeVal">他要是卡住了就按</span></button>
         <button class="grow" id="themeRow"><span class="ic" data-i="moon"></span>夜间模式<span class="sw wait" id="themeSw"></span></button>
+        <button class="grow" id="installRow" hidden><span class="ic" data-i="plus"></span>安装到手机<span class="val">添加到主屏幕</span></button>
         <button class="grow" id="apiRow"><span class="ic" data-i="bolt"></span>接入 API<span class="val" id="apiVal">…</span><span class="chev">›</span></button>
       </div>
     </div>
@@ -2141,6 +2153,10 @@ const sendBtn = document.getElementById('send');
 
 /* ---------- 小螃蟹 ---------- */
 const petImg = document.getElementById('petImg');
+const PET_FALLBACK = 'icons/icon.svg';
+petImg.addEventListener('error', () => {
+  if (!petImg.src.endsWith('/' + PET_FALLBACK)) petImg.src = PET_FALLBACK;
+});
 const PET = {
   idle: 'clawd-idle-follow.svg',
   thinking: 'clawd-working-thinking.svg',
@@ -5883,6 +5899,34 @@ function wearTheme(t) {
 document.getElementById('themeRow').onclick = () =>
   wearTheme(themeNow() === 'dark' ? 'auto' : 'dark');
 wearTheme(themeNow());
+
+/* Android Chrome 的安装入口；没有 beforeinstallprompt 时，给出系统菜单提示。 */
+let installPrompt = null;
+const installRow = document.getElementById('installRow');
+const standalone = () => window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+function setInstallVisible(on) {
+  if (installRow) installRow.hidden = !on;
+}
+setInstallVisible(!standalone());
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  setInstallVisible(true);
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  setInstallVisible(false);
+  note('（已经住进手机了）');
+});
+if (installRow) installRow.onclick = async () => {
+  if (!installPrompt) {
+    note('（请在 Chrome 右上角菜单里选择“添加到主屏幕”）');
+    return;
+  }
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+};
 
 document.getElementById('rewakeRow').onclick = async () => {
   const v = document.getElementById('rewakeVal');
