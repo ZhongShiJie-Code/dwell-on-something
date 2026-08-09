@@ -40,6 +40,20 @@
 })();
 </script>
 <style>
+  @font-face {
+    font-family: DwellSans;
+    src: url("./fonts/InterVariable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: DwellSerif;
+    src: url("./fonts/CormorantGaramond[wght].ttf") format("truetype");
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+  }
   :root {
     --bg: #faf9f5;
     --card: #ffffff;
@@ -59,7 +73,8 @@
     --amber-track: #f5e6c8;
     --red-track: #f6d8d4;
     --overlay: rgba(40, 38, 34, .4);
-    --serif: SerifNum, "Songti SC", "Noto Serif SC", Georgia, serif;
+    --sans: DwellSans, -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+    --serif: DwellSerif, SerifNum, "Songti SC", "Noto Serif SC", Georgia, serif;
     --glass: color-mix(in srgb, var(--card) 70%, transparent);  /* 悬浮层玻璃度（顶栏/菜单——内容条 8/3 改用 --panel 实色） */
     --pink: #E5A192;          
   }
@@ -92,7 +107,7 @@ html[data-theme="dark"] {
     margin: 0; height: 100%;
     overflow-x: hidden; max-width: 100vw;   
     background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+    font-family: var(--sans);
     font-size: 16px; line-height: 1.7;
     font-variant-numeric: tabular-nums;   
     -webkit-font-smoothing: antialiased;
@@ -259,8 +274,8 @@ html[data-theme="dark"] .glass,
     0%, 100% { transform: scale(.94) rotate(0deg); opacity: .92; }
     50% { transform: scale(1.04) rotate(8deg); opacity: 1; }
   }
-  .welcome h2 {
-    margin: 28px 0 0; color: var(--text); font-family: Georgia, "Songti SC", serif;
+  #welcome h2 {
+    margin: 28px 0 0; color: var(--text); font-family: var(--serif);
     font-size: clamp(28px, 7.2vw, 35px); font-weight: 500; letter-spacing: -.045em;
     line-height: 1.12; text-align: center; text-wrap: balance;
   }
@@ -388,14 +403,6 @@ html[data-theme="dark"] .glass,
     transition: border-radius .2s ease, box-shadow .2s ease;
   }
   .composer:not(.empty) { border-radius: 24px; }
-  .pro-banner {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    min-height: 42px; padding: 0 14px; margin-bottom: 13px;
-    background: #f0efe9; border-radius: 18px; color: #5e5b55; font-size: 13px;
-  }
-  .pro-banner button { flex: none; color: #6d54bd; font-size: 13.5px; font-weight: 700; }
-  .pro-banner button:active { opacity: .65; }
-  .composer:not(.empty) .pro-banner { display: none; }
   @media (prefers-color-scheme: dark) {
 html:not([data-theme="light"]) #nkPop {
       border: 1px solid rgba(255,255,255,.12);
@@ -707,6 +714,11 @@ html[data-theme="dark"] .composer {
 
   /* 全屏房间开着时，聊天的顶栏和输入卡先退场——毛玻璃层在个别浏览器里会钻上来 */
   body:has(.sheetWrap.open) header, body:has(.sheetWrap.open) footer { visibility: hidden; }
+  /* Add to chat 的半屏状态保留截图里的背景窗口，只让遮罩压暗它。 */
+  body:has(#addSheet.open) header, body:has(#addSheet.open) footer { visibility: visible; }
+  body:has(#addSheet.expanded) header, body:has(#addSheet.expanded) footer { visibility: hidden; }
+  #addSheet .shade { background: rgba(40, 38, 34, .34); }
+  #addSheet.expanded .shade { background: var(--bg); }
 
   .nb-tabs {
     display: flex; gap: 4px; padding: 4px; margin-bottom: 12px;
@@ -1563,19 +1575,66 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
     opacity: 1;
   }
 
-  .addgrid { display: flex; gap: 12px; padding: 8px 0 4px; }
-  .addbig {
-    flex: none; width: 108px; height: 108px; border-radius: 18px; background: var(--panel);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-    font-size: 15px;
+  /* Add to chat：按 Claude 移动端的卡片密度排版，底部抽屉会在这里复用同一套间距。 */
+  #addSheet .sheet {
+    height: min(52dvh, 620px); max-height: calc(100dvh - env(safe-area-inset-top) - 48px); min-height: 0;
+    border-radius: 34px 34px 0 0; overflow: hidden;
+    transition: height .34s cubic-bezier(.22, 1, .36, 1), transform .34s cubic-bezier(.22, 1, .36, 1);
   }
-  .addbig .ic { width: 26px; height: 26px; }
-  .addrow {
-    display: flex; align-items: center; gap: 12px; width: 100%;
-    background: var(--panel); border-radius: 16px; padding: 16px 18px; font-size: 16px;
-    margin-top: 12px; text-align: left;
+  #addSheet.expanded .sheet { height: calc(100dvh - env(safe-area-inset-top) - 48px); }
+  #addSheet .grabber {
+    width: 38px; height: 5px; margin: 10px auto 5px; background: #d8d8d4;
+    cursor: grab; touch-action: none;
   }
-  .addrow .ic { width: 20px; height: 20px; }
+  #addSheet .grabber:active { cursor: grabbing; }
+  #addSheet .head { padding: 8px 18px 10px; touch-action: none; }
+  #addSheet .head .hbtn { width: 42px; height: 42px; }
+  #addSheet .head .hbtn .ic { width: 22px; height: 22px; stroke-width: 1.8; }
+  #addSheet .head .ht { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  #addSheet .body { padding: 2px 20px calc(24px + env(safe-area-inset-bottom)); }
+  #addSheet .addgrid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+    padding: 4px 0 2px;
+  }
+  #addSheet .addbig {
+    width: 100%; height: 142px; border-radius: 23px; background: var(--card);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px;
+    font-size: 17px; line-height: 1.2; text-align: center;
+    box-shadow: 0 1px 3px rgba(40,38,34,.035);
+  }
+  #addSheet .addbig:active, #addSheet .addrow:active { transform: scale(.987); }
+  #addSheet .addicon, #addSheet .addrow-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 54px; height: 54px; border-radius: 50%; background: var(--panel); color: var(--text);
+  }
+  #addSheet .addicon .ic { width: 27px; height: 27px; stroke-width: 1.7; }
+  #addSheet .addrow {
+    display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px;
+    background: var(--card); border-radius: 21px; padding: 11px 16px; font-size: 17px;
+    margin-top: 12px; text-align: left; box-shadow: 0 1px 3px rgba(40,38,34,.035);
+  }
+  #addSheet .addrow-icon { width: 46px; height: 46px; flex: none; }
+  #addSheet .addrow-icon .ic { width: 23px; height: 23px; stroke-width: 1.65; }
+  #addSheet .addrow-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #addSheet .addtitle { font-size: 17px; line-height: 1.25; }
+  #addSheet .addsub { margin-top: 2px; color: var(--dim); font-size: 15px; line-height: 1.25; }
+  #addSheet .addchev { width: 18px; height: 18px; color: var(--dim); flex: none; stroke-width: 1.7; }
+  #addSheet .add-switch {
+    position: relative; width: 52px; height: 32px; flex: none; margin-left: auto;
+    border-radius: 999px; background: #2e79d6; transition: background .2s ease;
+  }
+  #addSheet .add-switch i {
+    position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); transition: transform .2s ease;
+  }
+  #addSheet .add-switch:not(.on) { background: var(--panel); }
+  #addSheet .add-switch:not(.on) i { transform: translateX(-20px); }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) #addSheet .addbig,
+    html:not([data-theme="light"]) #addSheet .addrow,
+    html[data-theme="dark"] #addSheet .addbig,
+    html[data-theme="dark"] #addSheet .addrow { box-shadow: 0 1px 3px rgba(0,0,0,.16); }
+  }
 
   .menuCard {   
     position: fixed; z-index: 60; top: calc(58px + env(safe-area-inset-top)); right: 12px;
@@ -1674,16 +1733,12 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
     <h2>What’s cooking, ShiJie?</h2>
   </div>
 </section>
-<div id="pet" title="他在这儿"><img id="petImg" src="pet/clawd-idle-follow.svg" alt=""></div>
+<div id="pet" title="他在这儿"><img id="petImg" src="icons/icon.svg" alt=""></div>
 
 <footer>
   <div id="doingLine"><span class="pill"><span class="w"></span><span class="en"></span><span class="t"></span></span></div>
   <div class="composer empty">
     <div id="attachStrip"></div>
-    <div class="pro-banner">
-      <span>Get more with Claude Pro</span>
-      <button id="upgradeBtn" type="button">Upgrade to Pro</button>
-    </div>
     <textarea id="box" rows="1" placeholder="Chat with Claude…" autocomplete="off"></textarea>
     <div class="ctlrow">
       <button id="plusBtn" title="添加照片和文件"><span class="ic" data-i="plus"></span></button>
@@ -2030,18 +2085,39 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
 
 <div class="sheetWrap" id="addSheet">
   <div class="shade" data-close="add"></div>
-  <div class="sheet" style="min-height:220px">
+  <div class="sheet" role="dialog" aria-label="Add to chat">
+    <div class="grabber" id="addGrabber" aria-hidden="true"></div>
     <div class="head">
       <button class="hbtn" data-close="add"><span class="ic" data-i="x"></span></button>
-      <div class="ht">Add context</div>
+      <div class="ht">Add to chat</div>
       <div class="hspace"></div>
     </div>
     <div class="body">
       <div class="addgrid">
-        <button class="addbig" id="cameraBtn"><span class="ic" data-i="camera"></span>Camera</button>
-        <button class="addbig" id="photoBtn"><span class="ic" data-i="image"></span>Photos</button>
+        <button class="addbig" id="cameraBtn"><span class="addicon"><span class="ic" data-i="camera"></span></span><span>Camera</span></button>
+        <button class="addbig" id="photoBtn"><span class="addicon"><span class="ic" data-i="image"></span></span><span>Photos</span></button>
+        <button class="addbig" id="fileBtn"><span class="addicon"><span class="ic" data-i="fileUp"></span></span><span>Files</span></button>
       </div>
-      <button class="addrow" id="fileBtn"><span class="ic" data-i="filePlus"></span>Add files</button>
+      <button class="addrow" id="webSearchRow" aria-pressed="true">
+        <span class="addrow-icon"><span class="ic" data-i="globe"></span></span>
+        <span class="addtitle">Web search</span>
+        <span class="add-switch on" id="webSearchSwitch" aria-hidden="true"><i></i></span>
+      </button>
+      <button class="addrow" id="projectRow">
+        <span class="addrow-icon"><span class="ic" data-i="box"></span></span>
+        <span class="addrow-copy"><span class="addtitle">Add to project</span><span class="addsub">None</span></span>
+        <span class="ic addchev" data-i="chevR"></span>
+      </button>
+      <button class="addrow" id="toolAccessRow">
+        <span class="addrow-icon"><span class="ic" data-i="briefcase"></span></span>
+        <span class="addrow-copy"><span class="addtitle">Tool access</span><span class="addsub">Auto</span></span>
+        <span class="ic addchev" data-i="chevR"></span>
+      </button>
+      <button class="addrow" id="connectorsRow">
+        <span class="addrow-icon"><span class="ic" data-i="paperclip"></span></span>
+        <span class="addtitle">Connectors</span>
+        <span class="ic addchev" data-i="chevR"></span>
+      </button>
     </div>
   </div>
 </div>
@@ -2158,12 +2234,15 @@ const ICONS = {
   book: S('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
   fileText: S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'),
   filePlus: S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>'),
+  fileUp: S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-5"/><polyline points="9 16 12 13 15 16"/>'),
   user: S('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
   trend: S('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'),
   home: S('<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>'),
   terminal: S('<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'),
   search: S('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
   globe: S('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
+  briefcase: S('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/><path d="M10 12v2h4v-2"/>'),
+  paperclip: S('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 1 1-2.83-2.83l8.49-8.48"/>'),
   box: S('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'),
   zap: S('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
   camera: S('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
@@ -3493,7 +3572,6 @@ box.addEventListener('input', () => {
   box.style.height = Math.min(box.scrollHeight, 160) + 'px';
 });
 document.getElementById('micBtn').onclick = () => note('（语音输入还没接入）');
-document.getElementById('upgradeBtn').onclick = () => note('（Pro 订阅入口还没接入）');
 
 const footerEl = document.querySelector('footer');
 let kbShift = 0, kbGap = 0;
@@ -5443,6 +5521,7 @@ document.querySelectorAll('[data-close]').forEach(el => {
 Object.entries(sheets).forEach(([k, wrap]) => {
   const sheet = wrap.querySelector('.sheet');
   if (!sheet) return;
+  if (k === 'add') return; // Add to chat 使用下面的可展开高度拖拽，避免和普通弹层的关闭手势冲突。
   let startY = 0, curY = 0, dragging = false;
   const doClose = () => {
     if (k === 'tool') sheetStack = [];
@@ -6432,13 +6511,101 @@ async function pickEffort(e) {
 })();
 
 /* ---------- 添加照片和文件 ---------- */
-document.getElementById('plusBtn').onclick = () => sheets.add.classList.add('open');
+const addSheetEl = document.getElementById('addSheet');
+const addPanel = addSheetEl.querySelector('.sheet');
+const addHead = addSheetEl.querySelector('.head');
+const addGrabber = document.getElementById('addGrabber');
+let addExpanded = false;
+let addDrag = null;
+let addAnimationId = 0;
+
+function addCollapsedHeight() {
+  return Math.min(Math.round(window.innerHeight * .52), 620);
+}
+function addExpandedHeight() {
+  return Math.max(addCollapsedHeight() + 1, Math.round(window.innerHeight - 48));
+}
+function resetAddSheetState() {
+  addAnimationId++;
+  addDrag = null;
+  addExpanded = false;
+  addSheetEl.classList.remove('expanded', 'dragging');
+  addPanel.style.height = '';
+  addPanel.style.transform = '';
+  addPanel.style.transition = '';
+}
+function closeAddSheet() {
+  addSheetEl.classList.remove('open');
+  resetAddSheetState();
+}
+function openAddSheet() {
+  resetAddSheetState();
+  addSheetEl.classList.add('open');
+}
+function settleAddSheet(expanded) {
+  const current = addPanel.getBoundingClientRect().height;
+  const target = expanded ? addExpandedHeight() : addCollapsedHeight();
+  const id = ++addAnimationId;
+  addExpanded = expanded;
+  addSheetEl.classList.toggle('expanded', expanded);
+  addSheetEl.classList.remove('dragging');
+  addPanel.style.transition = 'none';
+  addPanel.style.height = current + 'px';
+  void addPanel.offsetHeight;
+  requestAnimationFrame(() => {
+    if (id !== addAnimationId) return;
+    addPanel.style.transition = 'height .34s cubic-bezier(.22, 1, .36, 1)';
+    addPanel.style.height = target + 'px';
+  });
+  setTimeout(() => {
+    if (id !== addAnimationId) return;
+    addPanel.style.height = '';
+    addPanel.style.transition = '';
+  }, 380);
+}
+function addPointerDown(e) {
+  if (e.target.closest('.hbtn')) return;
+  if (!addSheetEl.classList.contains('open')) return;
+  addDrag = { id: e.pointerId, startY: e.clientY, startHeight: addPanel.getBoundingClientRect().height };
+  addSheetEl.classList.add('dragging');
+  addPanel.style.transition = 'none';
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  e.preventDefault();
+}
+function addPointerMove(e) {
+  if (!addDrag || addDrag.id !== e.pointerId) return;
+  const dy = e.clientY - addDrag.startY;
+  const next = Math.max(addCollapsedHeight(), Math.min(addExpandedHeight(), addDrag.startHeight - dy));
+  addPanel.style.height = next + 'px';
+  e.preventDefault();
+}
+function addPointerEnd(e) {
+  if (!addDrag || addDrag.id !== e.pointerId) return;
+  const dy = e.clientY - addDrag.startY;
+  const shouldExpand = addExpanded ? dy < 80 : dy < -80;
+  addDrag = null;
+  settleAddSheet(shouldExpand);
+  e.preventDefault();
+}
+[addGrabber, addHead].forEach(el => el.addEventListener('pointerdown', addPointerDown));
+addSheetEl.addEventListener('pointermove', addPointerMove);
+addSheetEl.addEventListener('pointerup', addPointerEnd);
+addSheetEl.addEventListener('pointercancel', addPointerEnd);
+document.querySelectorAll('#addSheet [data-close="add"]').forEach(el => el.addEventListener('click', resetAddSheetState));
+document.getElementById('plusBtn').onclick = openAddSheet;
 const fCamera = document.getElementById('fCamera');
 const fPhoto = document.getElementById('fPhoto');
 const fFile = document.getElementById('fFile');
 document.getElementById('cameraBtn').onclick = () => fCamera.click();
 document.getElementById('photoBtn').onclick = () => fPhoto.click();
 document.getElementById('fileBtn').onclick = () => fFile.click();
+document.getElementById('webSearchRow').onclick = () => {
+  const on = document.getElementById('webSearchSwitch').classList.toggle('on');
+  document.getElementById('webSearchRow').setAttribute('aria-pressed', String(on));
+};
+document.getElementById('projectRow').onclick = () => note('（项目入口还没接入）');
+document.getElementById('toolAccessRow').onclick = () => note('（工具权限暂按 Auto）');
+document.getElementById('connectorsRow').onclick = () => note('（连接器入口还没接入）');
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|log|ya?ml|xml|html?|css|js|ts|py|sh|ini|conf|toml|sql|srt|vtt)$/i;
 function isPlainText(f) {
@@ -6448,7 +6615,7 @@ function isPlainText(f) {
 }
 
 async function takeFiles(list, isImage) {
-  sheets.add.classList.remove('open');
+  closeAddSheet();
   for (const f of list) {
     if (f.type.startsWith('image/')) {
       const data = await shrinkImage(f);
