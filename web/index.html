@@ -240,7 +240,7 @@ html[data-theme="dark"] .glass,
     display: flex; align-items: center; justify-content: center;
     flex: none; color: var(--text);
   }
-  .iconbtn .ic { width: 23px; height: 23px; }
+  .iconbtn .ic { width: 28px; height: 28px; }
   
   header .iconbtn.glass {
     background: transparent;
@@ -268,7 +268,7 @@ html[data-theme="dark"] .glass,
   }
   #welcome.off { opacity: 0; transform: translateY(-10px); visibility: hidden; }
   .welcome-inner { display: flex; flex-direction: column; align-items: center; transform: translateY(-7px); }
-  .claude-mark { width: 68px; height: 68px; color: var(--accent); overflow: visible; }
+  .claude-mark { width: 60px; height: 60px; color: var(--accent); overflow: visible; }
   .claude-mark g { transform-origin: 36px 36px; animation: claudeBloom 5s ease-in-out infinite; }
   @keyframes claudeBloom {
     0%, 100% { transform: scale(.94) rotate(0deg); opacity: .92; }
@@ -454,20 +454,20 @@ html[data-theme="dark"] .composer {
   }
   .pill:active { opacity: .7; }
   .pill .ic { width: 14px; height: 14px; }
-  #plusBtn, #micBtn { width: 40px; height: 40px; border-radius: 50%; background: #f0efe9; flex: none; display: flex; align-items: center; justify-content: center; color: #33312d; }
-  #plusBtn .ic, #micBtn .ic { width: 20px; height: 20px; }
+  #plusBtn, #micBtn { width: 36px; height: 36px; border-radius: 50%; background: #f0efe9; flex: none; display: flex; align-items: center; justify-content: center; color: #33312d; }
+  #plusBtn .ic, #micBtn .ic { width: 18px; height: 18px; }
   #micBtn { background: #f0efe9; }
   #micBtn:active, #plusBtn:active { transform: scale(.96); }
   #modelPill { min-width: 0; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 13px; font-size: 14px; }
   .ctlrow .gap { flex: 1; }
   #send {
-    flex: none; width: 42px; height: 42px; border-radius: 50%;
+    flex: none; width: 38px; height: 38px; border-radius: 50%;
     background: #191917; color: #fff;
     display: flex; align-items: center; justify-content: center;
     transition: transform .16s ease, background .2s ease;
   }
   #send:active { transform: scale(.95); }
-  #send .ic { width: 20px; height: 20px; }
+  #send .ic { width: 18px; height: 18px; }
   #send .arrow { display: none; }
   #send.hasText { background: var(--accent); }
   #send.hasText .voice { display: none; }
@@ -1614,7 +1614,7 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
     margin-top: 12px; text-align: left; box-shadow: 0 1px 3px rgba(40,38,34,.035);
   }
   #addSheet .addrow-icon { width: 46px; height: 46px; flex: none; }
-  #addSheet .addrow-icon .ic { width: 23px; height: 23px; stroke-width: 1.65; }
+  #addSheet .addrow-icon .ic { width: 27px; height: 27px; stroke-width: 1.65; }
   #addSheet .addrow-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   #addSheet .addtitle { font-size: 17px; line-height: 1.25; }
   #addSheet .addsub { margin-top: 2px; color: var(--dim); font-size: 15px; line-height: 1.25; }
@@ -6538,6 +6538,18 @@ function closeAddSheet() {
   addSheetEl.classList.remove('open');
   resetAddSheetState();
 }
+function dismissAddSheet() {
+  const id = ++addAnimationId;
+  addDrag = null;
+  addSheetEl.classList.remove('expanded');
+  addSheetEl.classList.add('dragging');
+  addPanel.style.transition = 'height .24s cubic-bezier(.4, 0, .2, 1)';
+  addPanel.style.height = '0px';
+  setTimeout(() => {
+    if (id !== addAnimationId) return;
+    closeAddSheet();
+  }, 260);
+}
 function openAddSheet() {
   resetAddSheetState();
   addSheetEl.classList.add('open');
@@ -6582,6 +6594,12 @@ function addPointerMove(e) {
 function addPointerEnd(e) {
   if (!addDrag || addDrag.id !== e.pointerId) return;
   const dy = e.clientY - addDrag.startY;
+  const collapseDistance = Math.max(260, (addExpandedHeight() - addCollapsedHeight()) * .74);
+  if ((!addExpanded && dy > 80) || (addExpanded && dy > collapseDistance)) {
+    dismissAddSheet();
+    e.preventDefault();
+    return;
+  }
   const shouldExpand = addExpanded ? dy < 80 : dy < -80;
   addDrag = null;
   settleAddSheet(shouldExpand);
