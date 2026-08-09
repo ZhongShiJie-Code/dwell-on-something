@@ -1,0 +1,16 @@
+{
+  "name": "dwell-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs",
+    "news": "node news_daily.mjs"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

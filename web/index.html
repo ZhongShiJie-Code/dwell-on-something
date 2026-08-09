@@ -19,6 +19,19 @@
 <meta name="apple-mobile-web-app-title" content="Claude">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script>
+/* API 连接层：浏览器同源直连；APK 从本地保存的地址访问 Mac 后端。
+   没有配置地址时，file:// 仍保留离线演示模式，方便只看界面。 */
+(function () {
+  var params = new URLSearchParams(location.search);
+  var base = '';
+  try { base = params.get('api') || localStorage.getItem('dwellApiBase') || ''; } catch (e) {}
+  base = String(base || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  window.DWELL_API_BASE = base;
+  try { window.DWELL_API_TOKEN = localStorage.getItem('dwellApiToken') || ''; } catch (e) { window.DWELL_API_TOKEN = ''; }
+  window.DWELL_DEMO = !base && (location.protocol === 'file:' || params.get('demo') === '1');
+})();
+</script>
+<script>
 /* 夜间模式：跟随系统 / 常亮 / 常暗，三态轮换，记在本地。
    写在 <style> 前面执行，页面还没画就把皮穿好，不会闪一下白的。
    规矩：反转的只有底色、卡片、线、字这些"纸和墨"；
@@ -457,6 +470,7 @@ html[data-theme="dark"] .composer {
   #plusBtn, #micBtn { width: 36px; height: 36px; border-radius: 50%; background: #f0efe9; flex: none; display: flex; align-items: center; justify-content: center; color: #33312d; }
   #plusBtn .ic, #micBtn .ic { width: 18px; height: 18px; }
   #micBtn { background: #f0efe9; }
+  #micBtn.listening { background: var(--accent); color: #fff; }
   #micBtn:active, #plusBtn:active { transform: scale(.96); }
   #modelPill { min-width: 0; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 13px; font-size: 14px; }
   .ctlrow .gap { flex: 1; }
@@ -2145,7 +2159,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
    数据一律写死，不用 Math.random——随机数会让每次截图都不一样。
    接自己的后端时把这一整块删掉即可，其余代码不用动。
    ───────────────────────────────────────────────────────────── */
-(function () {
+(window.DWELL_DEMO ? function () {
   const T = 1786000000;
   const said = [
     { seq: 1, kind: 'her',  text: '帮我看看这个函数为什么每次都返回 undefined' },
@@ -2216,6 +2230,24 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
     for (const k of Object.keys(D)) if (u.includes(k)) return Promise.resolve(R(D[k]));
     if (u.includes('api/')) return Promise.resolve(R({ ok: true }));
     return real.apply(this, arguments);
+  };
+} : function () {})();
+
+/* file:// APK → Mac 后端的同一层路由；普通浏览器同源请求不改地址。 */
+(function () {
+  const realFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const raw = String(typeof input === 'string' ? input : (input && input.url) || '');
+    if (window.DWELL_API_BASE && raw.includes('api/')) {
+      const apiPath = raw.slice(raw.indexOf('api/'));
+      const target = window.DWELL_API_BASE + '/' + apiPath;
+      const options = Object.assign({}, init || {});
+      const h = new Headers((input && input.headers) || (init && init.headers) || {});
+      if (window.DWELL_API_TOKEN) h.set('X-Dwell-Token', window.DWELL_API_TOKEN);
+      options.headers = h;
+      return realFetch(target, options);
+    }
+    return realFetch(input, init);
   };
 })();
 
@@ -2321,13 +2353,13 @@ petImg.addEventListener('error', () => {
   if (!petImg.src.endsWith('/' + PET_FALLBACK)) petImg.src = PET_FALLBACK;
 });
 const PET = {
-  idle: 'clawd-idle-follow.svg',
-  thinking: 'clawd-working-thinking.svg',
-  typing: 'clawd-working-typing.svg',
-  happy: 'clawd-happy.svg',
-  doze: 'clawd-idle-doze.svg',
-  sleeping: 'clawd-sleeping.svg',
-  react: 'clawd-react-double-jump.svg',
+  idle: PET_FALLBACK,
+  thinking: PET_FALLBACK,
+  typing: PET_FALLBACK,
+  happy: PET_FALLBACK,
+  doze: PET_FALLBACK,
+  sleeping: PET_FALLBACK,
+  react: PET_FALLBACK,
 };
 let petState = 'idle';
 let petTimer = null;
@@ -2335,7 +2367,7 @@ let lastEventAt = Date.now();
 function petSet(state, holdMs) {
   if (petState === state && !holdMs) return;
   petState = state;
-  petImg.src = 'pet/' + (PET[state] || PET.idle);
+  petImg.src = PET[state] || PET_FALLBACK;
   if (petTimer) { clearTimeout(petTimer); petTimer = null; }
   if (holdMs) petTimer = setTimeout(() => petSet('idle'), holdMs);
 }
@@ -3583,7 +3615,28 @@ box.addEventListener('input', () => {
   box.style.height = 'auto';
   box.style.height = Math.min(box.scrollHeight, 160) + 'px';
 });
-document.getElementById('micBtn').onclick = () => note('（语音输入还没接入）');
+let speechRecognition = null;
+document.getElementById('micBtn').onclick = () => {
+  const mic = document.getElementById('micBtn');
+  if (speechRecognition) { speechRecognition.stop(); return; }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { note('（这个版本的 Android WebView 没有语音识别，请用键盘输入）'); return; }
+  const rec = new Recognition();
+  rec.lang = 'zh-CN';
+  rec.continuous = false;
+  rec.interimResults = true;
+  speechRecognition = rec;
+  mic.classList.add('listening');
+  rec.onresult = (event) => {
+    let text = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) text += event.results[i][0].transcript;
+    box.value = text;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  rec.onerror = (event) => note('（语音识别没成功：' + (event.error || '请再试一次') + '）', 'err');
+  rec.onend = () => { speechRecognition = null; mic.classList.remove('listening'); refreshSend(); };
+  try { rec.start(); } catch { speechRecognition = null; mic.classList.remove('listening'); note('（语音识别正在使用，请稍后再试）'); }
+};
 
 const footerEl = document.querySelector('footer');
 let kbShift = 0, kbGap = 0;
@@ -5569,7 +5622,7 @@ Object.entries(sheets).forEach(([k, wrap]) => {
 
 document.getElementById('avatarBtn').onclick = () => { closeDrawer(); sheets.settings.classList.add('open'); };
 document.getElementById('usageRow').onclick = () => { sheets.usage.classList.add('open'); loadUsage(); };
-document.getElementById('apiRow').onclick = () => note('（这是备用通道的占位——真到要用的那天，把 API key 给我，我把自己接回来）');
+document.getElementById('apiRow').onclick = () => { sheets.api.classList.add('open'); loadApi(); };
 function setArmed(on) {
   armedFresh = on;
   document.querySelector('.freshtip')?.remove();
@@ -5749,7 +5802,7 @@ document.getElementById('wakeRow').onclick = async () => {
       body: JSON.stringify({ on: !on })
     })).json();
     wakeVal.textContent = d.on ? '开着' : '关着';
-    note(d.on ? '（夜里他会自己醒几次，一晚上最多三次）' : '（关了，他夜里就一直睡着）');
+    note(d.on ? '（夜里他会自己醒几次，一晚上最多两次）' : '（关了，他夜里就一直睡着）');
   } catch { note('（没改成，再试一次）', 'err'); }
 };
 wakeState();
@@ -5987,8 +6040,16 @@ async function loadApi() {
   let st = {};
   try { st = await (await fetch('api/authmode', { cache: 'no-store' })).json(); } catch (e) {}
   const on = st.mode === 'api';
+  const savedBase = window.DWELL_API_BASE || '';
   b.innerHTML =
-    `<div class="sh-head"><h1>备用通道</h1><div class="sub">`
+    `<div class="sh-head"><h1>连接</h1><div class="sub">手机通过这个地址找到 Mac 上的 dwell 服务</div></div>`
+    + `<div class="ap-lb">后端地址</div>`
+    + `<input class="ap-in" id="dwellEndpoint" placeholder="http://192.168.1.10:8787">`
+    + `<div class="ap-lb">访问令牌（可选）</div>`
+    + `<input class="ap-in" id="dwellToken" type="password" placeholder="DWELL_AUTH_TOKEN">`
+    + `<div class="ap-btns"><button class="ap-b go" id="dwellConnect">保存并连接</button></div>`
+    + `<div class="ap-msg" id="dwellMsg"></div>`
+    + `<div class="sh-head"><h1>备用通道</h1><div class="sub">`
     + (on ? '正走着 · ' + (st.base || '') : '现在走订阅 · 备用没启用') + `</div></div>`
     + `<div class="ap-lb">接口地址</div>`
     + `<input class="ap-in" id="apBase" placeholder="https://openrouter.ai/api（留空=官方直连）" value="${st.base && st.base !== '官方直连' ? st.base : ''}">`
@@ -6005,6 +6066,26 @@ async function loadApi() {
     + `切过去之后会重新醒来一次，hook、记忆、待办全都照旧。<br>`
     + `<b>OpenRouter 的填法</b>：地址 https://openrouter.ai/api，令牌是它的 key，`
     + `模型名要带波浪号前缀 ~anthropic/claude-opus-latest。</div>`;
+
+  document.getElementById('dwellEndpoint').value = savedBase;
+  document.getElementById('dwellConnect').onclick = () => {
+    const endpoint = document.getElementById('dwellEndpoint').value.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+    const token = document.getElementById('dwellToken').value.trim();
+    const msg = document.getElementById('dwellMsg');
+    if (!endpoint || !/^https?:\/\//i.test(endpoint)) {
+      msg.textContent = '请填 Mac 的 http://地址';
+      msg.className = 'ap-msg on bad';
+      return;
+    }
+    try {
+      localStorage.setItem('dwellApiBase', endpoint);
+      if (token) localStorage.setItem('dwellApiToken', token);
+      else localStorage.removeItem('dwellApiToken');
+    } catch (e) {}
+    msg.textContent = '已保存，正在连接…';
+    msg.className = 'ap-msg on';
+    setTimeout(() => location.reload(), 260);
+  };
 
   const msg = document.getElementById('apMsg');
   const vals = () => ({
@@ -6677,9 +6758,24 @@ document.getElementById('webSearchRow').onclick = () => {
   const on = document.getElementById('webSearchSwitch').classList.toggle('on');
   document.getElementById('webSearchRow').setAttribute('aria-pressed', String(on));
 };
-document.getElementById('projectRow').onclick = () => note('（项目入口还没接入）');
-document.getElementById('toolAccessRow').onclick = () => note('（工具权限暂按 Auto）');
-document.getElementById('connectorsRow').onclick = () => note('（连接器入口还没接入）');
+document.getElementById('projectRow').onclick = async () => {
+  try {
+    const d = await (await fetch('api/projects', { cache: 'no-store' })).json();
+    note(d.items && d.items.length ? '（项目：' + d.items.map(x => x.name).join('、') + '）' : '（还没有项目；Claude Code 先在当前工作区工作）');
+  } catch { note('（项目拿不到，再试一次）', 'err'); }
+};
+document.getElementById('toolAccessRow').onclick = async () => {
+  try {
+    const d = await (await fetch('api/tool-access', { cache: 'no-store' })).json();
+    note('（工具权限：' + (d.mode || 'Auto') + '）');
+  } catch { note('（工具权限拿不到）', 'err'); }
+};
+document.getElementById('connectorsRow').onclick = async () => {
+  try {
+    const d = await (await fetch('api/connectors', { cache: 'no-store' })).json();
+    note(d.items && d.items.length ? '（连接器：' + d.items.map(x => x.name).join('、') + '）' : '（还没有连接器）');
+  } catch { note('（连接器拿不到）', 'err'); }
+};
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|log|ya?ml|xml|html?|css|js|ts|py|sh|ini|conf|toml|sql|srt|vtt)$/i;
 function isPlainText(f) {

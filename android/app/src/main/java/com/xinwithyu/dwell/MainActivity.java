@@ -33,6 +33,10 @@ public final class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
+        // The packaged UI is file://, while the optional Mac backend is on the
+        // LAN.  The backend still gates access with DWELL_AUTH_TOKEN when set.
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setLoadWithOverviewMode(false);
