@@ -9,6 +9,7 @@ const EXTERNAL_PREFIX = 'claude:';
 const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let fileCache = { at: 0, files: new Map() };
+const jsonlCache = new Map();
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -28,12 +29,18 @@ function unixSeconds(value, fallback = 0) {
 
 async function readJsonl(file) {
   try {
+    const stat = await fsp.stat(file);
+    const key = `${stat.size}:${stat.mtimeMs}`;
+    const cached = jsonlCache.get(file);
+    if (cached?.key === key) return cached.rows;
     const text = await fsp.readFile(file, 'utf8');
     const rows = [];
     for (const line of text.split('\n')) {
       if (!line.trim()) continue;
       try { rows.push(JSON.parse(line)); } catch {}
     }
+    jsonlCache.set(file, { key, rows });
+    if (jsonlCache.size > 180) jsonlCache.delete(jsonlCache.keys().next().value);
     return rows;
   } catch { return []; }
 }

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { listTaskRuns, taskRunDetail } from './desktop-task-history.mjs';
 
 const execFileAsync = promisify(execFile);
 const profileRoot = path.resolve(process.env.DWELL_CLAUDE_PROFILE || path.join(os.homedir(), 'Library/Application Support/Claude-3p'));
@@ -41,6 +42,14 @@ function scheduleFor(task) {
   return '未设置周期';
 }
 
+function displayName(task, detail) {
+  const id = String(task.id || '');
+  const configured = String(task.title || task.displayName || task.name || detail.name || '').trim();
+  if (configured && configured !== id) return configured;
+  const words = id.replace(/[-_]+/g, ' ').trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : id;
+}
+
 async function readRaw() {
   const file = await firstTaskFile();
   if (!file) return { file: '', tasks: [] };
@@ -73,7 +82,7 @@ export async function listDesktopTasks() {
     const running = ['queued', 'running'].includes(runState.status);
     items.push({
       id: String(task.id),
-      name: detail.name || String(task.id),
+      name: displayName(task, detail),
       description: detail.description || 'Claude Desktop 定时任务',
       enabled: task.enabled !== false,
       schedule: scheduleFor(task),
@@ -115,4 +124,21 @@ export async function controlDesktopTask(action, taskId) {
   } catch (error) {
     return { ok: false, status: 502, error: 'desktop_control_failed', detail: error.message };
   }
+}
+
+export async function desktopTaskDetail(taskId) {
+  const view = await listDesktopTasks();
+  const task = view.items.find(item => item.id === String(taskId));
+  if (!task) return { ok: false, status: 404, error: 'task_not_found' };
+  const runs = await listTaskRuns(task.id);
+  return { ok: true, task, control: view.control, runs };
+}
+
+export async function desktopTaskRunDetail(taskId, runId) {
+  const view = await listDesktopTasks();
+  const task = view.items.find(item => item.id === String(taskId));
+  if (!task) return { ok: false, status: 404, error: 'task_not_found' };
+  const run = await taskRunDetail(task.id, String(runId));
+  if (!run) return { ok: false, status: 404, error: 'task_run_not_found' };
+  return { ok: true, task, run };
 }

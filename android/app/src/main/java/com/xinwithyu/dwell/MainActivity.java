@@ -8,11 +8,13 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.speech.RecognizerIntent;
 import android.speech.RecognitionListener;
 import android.speech.SpeechRecognizer;
@@ -50,15 +52,16 @@ public final class MainActivity extends Activity {
     private SpeechRecognizer speechRecognizer;
     private Intent voiceIntent;
     private boolean voiceListening;
+    private String pendingRoute = "";
+    private boolean webReady;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        boolean systemDark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        setTheme(systemDark ? R.style.AppThemeDark : R.style.AppTheme);
         super.onCreate(savedInstanceState);
-        Window window = getWindow();
-        window.setStatusBarColor(Color.rgb(250, 249, 245));
-        window.setNavigationBarColor(Color.rgb(250, 249, 245));
-        window.getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        applySystemBars(systemDark);
+        captureRoute(getIntent());
 
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
@@ -76,7 +79,7 @@ public final class MainActivity extends Activity {
         settings.setUseWideViewPort(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
 
-        webView.setBackgroundColor(Color.rgb(250, 249, 245));
+        webView.setBackgroundColor(systemDark ? Color.rgb(38, 38, 36) : Color.rgb(250, 249, 245));
         webView.addJavascriptInterface(new NativeBridge(), "Android");
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -87,6 +90,12 @@ public final class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return openExternalIfNeeded(Uri.parse(url));
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                webReady = true;
+                flushPendingRoute();
             }
         });
         webView.setWebChromeClient(new WebChromeClient() {
@@ -118,6 +127,45 @@ public final class MainActivity extends Activity {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
         }
         webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void applySystemBars(boolean dark) {
+        Window window = getWindow();
+        window.setStatusBarColor(dark ? Color.rgb(38, 38, 36) : Color.rgb(250, 249, 245));
+        window.setNavigationBarColor(dark ? Color.rgb(38, 38, 36) : Color.rgb(250, 249, 245));
+        window.getDecorView().setSystemUiVisibility(dark ? 0
+                : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+    }
+
+    private void captureRoute(Intent intent) {
+        if (intent == null) return;
+        String route = intent.getStringExtra(DwellNotificationJobService.EXTRA_ROUTE);
+        if (route != null && !route.trim().isEmpty()) pendingRoute = route.trim();
+    }
+
+    private void flushPendingRoute() {
+        if (!webReady || pendingRoute.isEmpty()) return;
+        String route = pendingRoute;
+        pendingRoute = "";
+        evaluate("window.onNativeOpenRoute&&window.onNativeOpenRoute(" + JSONObject.quote(route) + ")");
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        captureRoute(intent);
+        flushPendingRoute();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webReady) {
+            String state = new NativeBridge().notificationState();
+            if ("on".equals(state)) DwellNotificationJobService.schedule(this);
+            notifyNotificationChanged(state, "");
+        }
     }
 
     private boolean launchCamera() {
@@ -351,15 +399,22 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void enableNotifications(String endpoint, String token) {
-            saveBackend(endpoint, token, true);
-            runOnUiThread(() -> {
-                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
-                } else {
-                    DwellNotificationJobService.schedule(MainActivity.this);
-                }
-            });
+        public String enableNotifications(String endpoint, String token) {
+            try {
+                if (!saveBackend(endpoint, token, true)) return "invalid_endpoint";
+                runOnUiThread(() -> {
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
+                    } else {
+                        DwellNotificationJobService.schedule(MainActivity.this);
+                        notifyNotificationChanged("on", "手机通知已开启");
+                    }
+                });
+                return notificationsAllowed() ? "on" : "pending";
+            } catch (Exception error) {
+                notifyNotificationChanged("error", error.getMessage() == null ? "通知初始化失败" : error.getMessage());
+                return "error";
+            }
         }
 
         @JavascriptInterface
@@ -367,6 +422,16 @@ public final class MainActivity extends Activity {
             getSharedPreferences(DwellNotificationJobService.PREFS, MODE_PRIVATE)
                     .edit().putBoolean(DwellNotificationJobService.KEY_ENABLED, false).apply();
             DwellNotificationJobService.cancel(MainActivity.this);
+            notifyNotificationChanged("off", "手机通知已关闭");
+        }
+
+        @JavascriptInterface
+        public void openNotificationSettings() {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                try { startActivity(intent); } catch (ActivityNotFoundException ignored) {}
+            });
         }
 
         @JavascriptInterface
@@ -374,7 +439,23 @@ public final class MainActivity extends Activity {
             if (!notificationsAllowed()) return;
             long seq = parseMessageId(messageId);
             markNotificationSeen(messageId);
-            DwellNotificationJobService.show(MainActivity.this, title, body, seq > 0 ? seq : System.currentTimeMillis());
+            DwellNotificationJobService.show(MainActivity.this, title, body, seq > 0 ? seq : System.currentTimeMillis(), "");
+        }
+
+        @JavascriptInterface
+        public void showNotificationWithRoute(String title, String body, String messageId, String route) {
+            if (!notificationsAllowed()) return;
+            long seq = parseMessageId(messageId);
+            markNotificationSeen(messageId);
+            DwellNotificationJobService.show(MainActivity.this, title, body, seq > 0 ? seq : System.currentTimeMillis(), route == null ? "" : route);
+        }
+
+        @JavascriptInterface
+        public void setDarkMode(boolean dark) {
+            runOnUiThread(() -> {
+                applySystemBars(dark);
+                if (webView != null) webView.setBackgroundColor(dark ? Color.rgb(38, 38, 36) : Color.rgb(250, 249, 245));
+            });
         }
 
         @JavascriptInterface
@@ -395,7 +476,7 @@ public final class MainActivity extends Activity {
             return "on";
         }
 
-        private void saveBackend(String endpoint, String token, boolean enable) {
+        private boolean saveBackend(String endpoint, String token, boolean enable) {
             String clean = endpoint == null ? "" : endpoint.trim().replaceAll("/+$", "").replaceAll("/api$", "");
             Uri uri = Uri.parse(clean);
             if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) clean = "";
@@ -412,6 +493,7 @@ public final class MainActivity extends Activity {
             editor.apply();
             if (enabled && notificationsAllowed()) DwellNotificationJobService.schedule(MainActivity.this);
             else DwellNotificationJobService.cancel(MainActivity.this);
+            return !clean.isEmpty();
         }
 
         private boolean notificationsAllowed() {
@@ -425,6 +507,10 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void notifyNotificationChanged(String state, String message) {
+        evaluate("window.onNativeNotificationChanged&&window.onNativeNotificationChanged(" + JSONObject.quote(state) + "," + JSONObject.quote(message == null ? "" : message) + ")");
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -436,8 +522,10 @@ public final class MainActivity extends Activity {
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             DwellNotificationJobService.schedule(this);
+            notifyNotificationChanged("on", "手机通知已开启");
+        } else {
+            notifyNotificationChanged("blocked", "请在系统设置中允许 dwell 发送通知");
         }
-        evaluate("window.onNativeNotificationChanged&&window.onNativeNotificationChanged()");
     }
 
     private void beginVoiceRecognition() {

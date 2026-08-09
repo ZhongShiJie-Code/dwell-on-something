@@ -23,11 +23,11 @@ const json = (body, method = 'POST') => ({
 
 const health = await call('health');
 assert.equal(health.ok, true);
-assert.equal(health.version, '0.4.5');
+assert.equal(health.version, '0.4.6');
 
 const status = await call('status');
 assert.equal(status.alive, true);
-assert.equal(status.version, '0.4.5');
+assert.equal(status.version, '0.4.6');
 
 const context = await call('context');
 assert.equal(context.ok, true);
@@ -65,6 +65,11 @@ const desktopTasks = await call('desktop-tasks');
 assert.equal(desktopTasks.ok, true);
 assert.ok(Array.isArray(desktopTasks.items));
 assert.equal(typeof desktopTasks.control?.available, 'boolean');
+if (desktopTasks.items.length) {
+  const taskDetail = await call(`desktop-tasks/${encodeURIComponent(desktopTasks.items[0].id)}`);
+  assert.equal(taskDetail.task.id, desktopTasks.items[0].id);
+  assert.ok(Array.isArray(taskDetail.runs));
+}
 
 const date = new Date().toISOString().slice(0, 10);
 let cal = await call('cal', json({ action: 'add_event', date, text: `smoke-${stamp}`, time: '09:30' }));
@@ -198,12 +203,31 @@ try {
   const providerResult = providerPoll.events.find(item => item.type === 'result' && item.result === 'mock reply');
   assert.ok(providerResult);
   assert.ok(providerResult.notification_id > 0);
+  const providerNotifications = await call('notifications?since=0');
+  const providerNotification = providerNotifications.items.find(item => item.id === providerResult.notification_id);
+  assert.equal(providerNotification?.kind, 'chat');
+  assert.match(providerNotification?.route || '', /^chat\//);
+  assert.ok(providerNotifications.next >= providerResult.notification_id);
+  assert.ok(providerPoll.events.filter(item => item.type === 'stream_event' && item.event?.delta?.type === 'text_delta').length >= 2);
   const providerMessages = await call('messages?limit=400');
   assert.ok(providerMessages.msgs.some(item => item.kind === 'gu' && item.text === 'mock reply'));
   const streamed = providerCalls.find(item => item.body?.stream === true);
   assert.ok(Array.isArray(streamed?.body?.messages?.[0]?.content));
   assert.ok(streamed.body.messages[0].content.some(item => item.type === 'image_url'));
   assert.match(JSON.stringify(streamed.body), /用户已开启 Web search/);
+
+  const retryTarget = providerMessages.msgs.findLast(item => item.kind === 'gu' && item.text === 'mock reply');
+  const retryUserCount = providerMessages.msgs.filter(item => item.kind === 'me').length;
+  const beforeRetryPoll = await call('poll?since=0&wait=0');
+  const retried = await call('retry', json({ message_id: retryTarget.seq }));
+  assert.ok(retried.removed.map(String).includes(String(retryTarget.seq)));
+  await new Promise(resolve => setTimeout(resolve, 180));
+  const afterRetryMessages = await call('messages?limit=400');
+  assert.equal(afterRetryMessages.msgs.filter(item => item.kind === 'me').length, retryUserCount);
+  assert.equal(afterRetryMessages.msgs.some(item => item.seq === retryTarget.seq), false);
+  assert.ok(afterRetryMessages.msgs.some(item => item.kind === 'gu' && item.text === 'mock reply'));
+  const afterRetryPoll = await call(`poll?since=${beforeRetryPoll.next}&wait=0`);
+  assert.ok(afterRetryPoll.events.some(item => item.type === 'system' && item.subtype === 'regenerate'));
 
   const beforeReplacement = await call('messages?limit=400');
   const mockRepliesBefore = beforeReplacement.msgs.filter(item => item.kind === 'gu' && item.text === 'mock reply').length;
@@ -239,6 +263,20 @@ try {
     assert.ok(afterTimeoutPoll.events.some(item => item.type === 'result' && item.is_error && item.result === '备用 API 请求超时'));
     assert.equal((await call('status')).busy, false);
   }
+
+  const beforeBranch = await call('messages?limit=400');
+  const branchTarget = beforeBranch.msgs.find(item => item.kind === 'gu');
+  assert.ok(branchTarget);
+  const branchUser = beforeBranch.msgs.filter(item => item.kind === 'me' && item.seq < branchTarget.seq).at(-1);
+  assert.ok(branchUser);
+  assert.ok(beforeBranch.msgs.some(item => item.seq > branchTarget.seq));
+  await call('retry', json({ message_id: branchTarget.seq }));
+  await new Promise(resolve => setTimeout(resolve, 180));
+  const afterBranch = await call('messages?limit=400');
+  assert.equal(afterBranch.msgs.filter(item => item.kind === 'me').length,
+    beforeBranch.msgs.filter(item => item.kind === 'me' && item.seq <= branchUser.seq).length);
+  assert.equal(afterBranch.msgs.some(item => item.text === `replacement-${stamp}`), false);
+  assert.ok(afterBranch.msgs.some(item => item.kind === 'gu' && item.text === 'mock reply'));
 
   const beforeSwitch = (await call('chats?scope=live')).items.find(item => item.current);
   await call('newchat', json({ arm: true }));

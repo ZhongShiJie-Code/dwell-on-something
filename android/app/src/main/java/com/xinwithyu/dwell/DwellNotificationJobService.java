@@ -33,6 +33,7 @@ public final class DwellNotificationJobService extends JobService {
     static final String KEY_ENDPOINT = "backend-endpoint";
     static final String KEY_TOKEN = "backend-token";
     static final String KEY_LAST_SEQ = "notification-last-seq";
+    static final String EXTRA_ROUTE = "dwell-notification-route";
 
     private static final int JOB_ID = 0x4457454C;
     private static final int JOB_NOW_ID = JOB_ID + 1;
@@ -126,7 +127,7 @@ public final class DwellNotificationJobService extends JobService {
             int start = Math.max(0, items.length() - 3);
             for (int i = start; i < items.length(); i++) {
                 JSONObject item = items.optJSONObject(i);
-                if (item != null) show(this, item.optString("title", "dwell"), item.optString("body", "有新消息"), item.optLong("id", System.currentTimeMillis()));
+                if (item != null) show(this, item.optString("title", "dwell"), item.optString("body", "有新消息"), item.optLong("id", System.currentTimeMillis()), item.optString("route", ""));
             }
         }
         prefs.edit().putLong(KEY_LAST_SEQ, Math.max(since, next)).apply();
@@ -141,16 +142,18 @@ public final class DwellNotificationJobService extends JobService {
         return out.toString();
     }
 
-    static void show(Context context, String title, String body, long notificationId) {
+    static void show(Context context, String title, String body, long notificationId, String route) {
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "dwell 消息", NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("Mac 上的 dwell 有新回复时提醒");
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "dwell 消息与任务", NotificationManager.IMPORTANCE_DEFAULT);
+        channel.setDescription("Mac 上有新回复或定时任务完成时提醒");
         manager.createNotificationChannel(channel);
         Intent open = new Intent(context, MainActivity.class);
         open.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pending = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        if (route != null && !route.isEmpty()) open.putExtra(EXTRA_ROUTE, route);
+        int requestCode = (int) (notificationId & 0x7fffffff);
+        PendingIntent pending = PendingIntent.getActivity(context, requestCode, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         android.app.Notification.Builder builder = new android.app.Notification.Builder(context, CHANNEL_ID);
         builder.setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title == null || title.isEmpty() ? "dwell" : title)

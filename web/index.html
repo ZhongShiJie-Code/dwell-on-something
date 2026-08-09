@@ -46,6 +46,10 @@
    本家橘、身体粉这种有身份的颜色两种模式下都不动——它们是记号，不是背景。 */
 (function () {
   try {
+    if (localStorage.getItem('themeAutoMigration046') !== '1') {
+      localStorage.setItem('homeTheme', 'auto');
+      localStorage.setItem('themeAutoMigration046', '1');
+    }
     var t = localStorage.getItem('homeTheme') || 'auto';
     if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
   } catch (e) {}
@@ -316,12 +320,17 @@ html[data-theme="dark"] .glass,
     font-size: 13px; padding: 6px 16px; border-radius: 14px;
   }
   .row { width: 100%; max-width: 720px; margin: 0 auto; }
-  .row.me { display: flex; justify-content: flex-end; }
+  .row.me { display: flex; flex-direction: column; align-items: flex-end; }
   .bubble {
     background: var(--user-bubble); border-radius: 18px; padding: 10px 16px;
     max-width: 85%; white-space: pre-wrap; word-break: break-word;
   }
   .gu { white-space: pre-wrap; word-break: break-word; }
+  .msg-time {
+    margin-top: 6px; color: var(--dim); font-size: 11px; line-height: 1.2;
+    font-variant-numeric: tabular-nums; letter-spacing: .01em;
+  }
+  .row.me .msg-time { padding-right: 4px; }
   .gu img.chatimg, .bubble img.chatimg {
     max-width: min(240px, 70%); border-radius: 14px; display: block; margin: 6px 0;
   }
@@ -1538,8 +1547,9 @@ html[data-theme="dark"] .note { color: #2f2b26; box-shadow: 0 3px 12px rgba(0,0,
           background: var(--panel); color: var(--text);
           font-variant-numeric: tabular-nums; transition: background .2s, color .2s; }
   .chip.on { background: var(--text); color: var(--bg); }
-  .task-card { background: var(--panel); border-radius: 17px; padding: 15px; }
+  .task-card { background: var(--panel); border-radius: 17px; padding: 15px; cursor: pointer; transition: transform .16s ease, background .16s ease; }
   .task-card + .task-card { margin-top: 10px; }
+  .task-card:active { transform: scale(.992); background: var(--card); }
   .task-title { font-size: 16px; line-height: 1.4; }
   .task-description { color: var(--dim); font-size: 13px; line-height: 1.55; margin-top: 3px; }
   .task-meta { display: flex; flex-wrap: wrap; gap: 7px 13px; color: var(--dim); font-size: 12.5px; margin-top: 10px; }
@@ -1552,6 +1562,41 @@ html[data-theme="dark"] .note { color: #2f2b26; box-shadow: 0 3px 12px rgba(0,0,
   .task-actions button:active { transform: scale(.98); }
   .task-actions button[disabled] { opacity: .42; }
   .task-note { color: var(--dim); font-size: 13px; line-height: 1.65; padding: 8px 4px 15px; }
+  .task-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0 8px -8px; padding: 8px; border-radius: 13px; font-size: 14px; color: var(--dim); }
+  .task-back .ic { width: 18px; height: 18px; }
+  .task-back:active { background: var(--panel); }
+  .task-detail-hero { padding: 5px 3px 20px; border-bottom: 1px solid var(--line); }
+  .task-detail-hero h1 { margin: 0; font-family: var(--serif); font-size: 31px; line-height: 1.18; letter-spacing: -.025em; }
+  .task-detail-hero p { margin: 8px 0 0; color: var(--dim); font-size: 14px; line-height: 1.6; }
+  .task-detail-status { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .task-detail-status span, .run-source { padding: 5px 9px; border-radius: 999px; background: var(--panel); color: var(--dim); font-size: 12px; }
+  .task-section-title { margin: 22px 3px 10px; font-size: 13px; color: var(--dim); letter-spacing: .04em; }
+  .task-run-row { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 14px 2px; text-align: left; border-bottom: 1px solid var(--line); }
+  .task-run-dot { width: 9px; height: 9px; margin-top: 6px; flex: none; border-radius: 50%; background: var(--dim); }
+  .task-run-dot.success { background: var(--green); }
+  .task-run-dot.failed, .task-run-dot.interrupted { background: var(--red); }
+  .task-run-dot.running, .task-run-dot.queued { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .task-run-main { min-width: 0; flex: 1; }
+  .task-run-top { display: flex; align-items: center; gap: 8px; }
+  .task-run-name { min-width: 0; flex: 1; font-size: 15px; font-weight: 600; }
+  .task-run-time { color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .task-run-copy { margin-top: 4px; color: var(--dim); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .run-summary { margin-top: 14px; padding: 15px; border-radius: 16px; background: var(--panel); font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .run-timeline { margin-top: 8px; }
+  .run-step { position: relative; display: grid; grid-template-columns: 18px 1fr; gap: 11px; padding: 8px 0 13px; }
+  .run-step:not(:last-child)::after { content: ''; position: absolute; left: 8px; top: 25px; bottom: -2px; width: 1px; background: var(--line); }
+  .run-step-dot { width: 9px; height: 9px; margin: 5px 0 0 4px; border-radius: 50%; background: var(--dim); z-index: 1; }
+  .run-step-dot.failed { background: var(--red); }
+  .run-step-dot.running { background: var(--accent); }
+  .run-step-title { font-size: 14.5px; font-weight: 600; line-height: 1.4; }
+  .run-step-detail { margin-top: 3px; color: var(--dim); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .run-files { display: flex; flex-direction: column; gap: 7px; }
+  .run-file { display: flex; align-items: center; gap: 10px; padding: 12px 13px; border-radius: 13px; background: var(--panel); }
+  .run-file .ic { width: 18px; height: 18px; color: var(--dim); }
+  .run-file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+  .task-loading { display: grid; gap: 10px; padding-top: 8px; }
+  .task-loading i { display: block; height: 74px; border-radius: 16px; background: var(--panel); animation: softPulse 1.2s ease-in-out infinite; }
+  @keyframes softPulse { 50% { opacity: .55; } }
   .hadd input[type=time] {
     border: 0; border-radius: 999px; padding: 6px 12px;
     background: var(--panel); color: inherit; font: inherit; font-size: 12.5px;
@@ -1841,6 +1886,11 @@ html[data-theme="dark"] .menuCard {
     padding: 1px 7px; border-radius: 999px; background: var(--panel); font-size: 11.5px;
   }
   .chat-empty { padding: 56px 8px; text-align: center; color: var(--dim); font-size: 15px; }
+  .chat-open-loading { width: 100%; max-width: 720px; margin: 8px auto 0; display: grid; gap: 13px; }
+  .chat-open-loading i { display: block; height: 18px; border-radius: 8px; background: var(--panel); animation: softPulse 1.1s ease-in-out infinite; }
+  .chat-open-loading i:nth-child(1) { width: 78%; }
+  .chat-open-loading i:nth-child(2) { width: 92%; }
+  .chat-open-loading i:nth-child(3) { width: 64%; }
   #chatManageBar {
     position: absolute; z-index: 2; left: 18px; right: 18px;
     bottom: calc(17px + env(safe-area-inset-bottom)); display: none;
@@ -2017,7 +2067,6 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         <button class="grow" id="wakeRow"><span class="ic" data-i="alarm"></span>夜里让他自己醒<span class="sw wait" id="wakeSw"></span></button>
         <button class="grow" id="rewakeRow"><span class="ic" data-i="refresh"></span>叫他重新醒一次<span class="val" id="rewakeVal">他要是卡住了就按</span></button>
         <button class="grow" id="themeRow"><span class="ic" data-i="moon"></span>夜间模式<span class="sw wait" id="themeSw"></span></button>
-        <button class="grow" id="installRow" hidden><span class="ic" data-i="plus"></span>安装到手机<span class="val">添加到主屏幕</span></button>
         <button class="grow" id="apiRow"><span class="ic" data-i="bolt"></span>接入 API<span class="val" id="apiVal">…</span><span class="chev">›</span></button>
       </div>
     </div>
@@ -2485,7 +2534,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         await new Promise(resolve => setTimeout(resolve, 700));
         fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
       }
-      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.5', events: fresh });
+      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.6', events: fresh });
     }
     if (p === 'api/send' && method === 'POST') {
       const data = parseBody(init);
@@ -2855,13 +2904,32 @@ function row(cls) {
   log.appendChild(d);
   return d;
 }
-function addMe(text) {
+function messageClock(value) {
+  const raw = Number(value || 0);
+  const date = raw ? new Date(raw < 10_000_000_000 ? raw * 1000 : raw) : new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  const today = new Date();
+  const sameDay = date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+  return new Intl.DateTimeFormat('zh-CN', sameDay
+    ? { hour: '2-digit', minute: '2-digit', hour12: false }
+    : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+}
+function setMessageTime(host, at, seq) {
+  if (!host) return;
+  if (seq != null) host.dataset.messageSeq = String(seq);
+  let time = host.querySelector(':scope > .msg-time');
+  if (!time) { time = document.createElement('time'); time.className = 'msg-time'; host.appendChild(time); }
+  time.dateTime = new Date((Number(at || Date.now()) < 10_000_000_000 ? Number(at || Date.now()) * 1000 : Number(at || Date.now()))).toISOString();
+  time.textContent = messageClock(at);
+}
+function addMe(text, at, seq) {
   const r = row('me');
   const b = document.createElement('div');
   b.className = 'bubble';
   b.textContent = text;
   r.appendChild(b);
   renderRich(b);
+  setMessageTime(r, at || Date.now(), seq);
   scroll(true);
   activeTurnMeta = { thought: '', toolIds: [], startedAt: Date.now() };
   guEl = null; endThink(); closeGroup();
@@ -2932,8 +3000,11 @@ function openThinkSheet(idx) {
   thinkBodyEl.textContent = thinkStore[idx].text;
   sheets.think.classList.add('open');
 }
-function ensureGu() {
-  if (guEl) return guEl;
+function ensureGu(at, seq) {
+  if (guEl) {
+    if (at || seq != null) setMessageTime(guEl._row, at || Date.now(), seq);
+    return guEl;
+  }
   closeThink(); closeGroup();
   const r = row();
   const d = document.createElement('div');
@@ -2942,6 +3013,7 @@ function ensureGu() {
   r._guEl = d;
   d._row = r;
   guEl = d;
+  setMessageTime(r, at || Date.now(), seq);
   scroll();
   return guEl;
 }
@@ -3080,12 +3152,14 @@ function openSummary(meta, text) {
 async function retryMessage(messageId, button) {
   if (!messageId) { note('（这条回复还没有后端编号）', 'err'); return; }
   button.disabled = true;
+  setBusy(true);
   try {
     const r = await fetch('api/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: messageId }) });
     const d = await r.json();
     if (!r.ok || d.ok === false) throw new Error(d.error || '重新生成失败');
-    note('（正在重新生成）');
-  } catch (error) { note('（重新生成失败：' + (error.message || '请重试') + '）', 'err'); button.disabled = false; }
+    await loadSaid({ reset: true, preserveBusy: true });
+    note('（正在重新生成原来的回答）');
+  } catch (error) { setBusy(false); note('（重新生成失败：' + (error.message || '请重试') + '）', 'err'); button.disabled = false; }
 }
 function renderAssistantExtras(el, message, meta = {}) {
   if (!el?.isConnected) return;
@@ -3726,11 +3800,11 @@ toolBack.onclick = () => {
 
 function renderSaid(msgs) {
   for (const m of msgs) {
-    if (m.kind === 'me') { endThink(); addMe(m.text); }
+    if (m.kind === 'me') { endThink(); addMe(m.text, m.at, m.seq); }
     else if (m.kind === 'gu') {
       const meta = { thought: turnThink?.text || '', toolIds: curGroup?.ids ? [...curGroup.ids] : [] };
       endThink();                    // 该说正文了，思考那段收工
-      const el = ensureGu();
+      const el = ensureGu(m.at, m.seq);
       el._raw = m.text;
       el._final = true;              // 这是说完了的，谁都别再画它
       el.textContent = m.text;
@@ -3945,9 +4019,14 @@ setInterval(calDayWatch, 120000);
 
 function handle(d) {
   lastEventAt = Date.now();
-  if (d.type === 'echo') { if (armedFresh) setArmed(false); addMe(d.text); petSet('thinking'); return; }
+  if (d.type === 'echo') { if (armedFresh) setArmed(false); addMe(d.text, d.at, d.seq); petSet('thinking'); return; }
   if (d.type === 'system' && d.subtype === 'newchat') { setArmed(false); resetConversationView({ preserveBusy: true }); return; }
   if (d.type === 'system' && d.subtype === 'switched') { setArmed(false); resetConversationView({ preserveBusy: true }); return; }
+  if (d.type === 'system' && d.subtype === 'regenerate') {
+    setBusy(true);
+    loadSaid({ reset: true, preserveBusy: true });
+    return;
+  }
 
   if (d.type === 'stream_event') {
     const ev = d.event || {};
@@ -3960,7 +4039,7 @@ function handle(d) {
     }
     if (delta.type === 'text_delta' && delta.text) {
       petSet('typing');
-      const el = ensureGu();
+      const el = ensureGu(Date.now());
       // 上一条已经定稿，现在又开口了——中间没干活，两条话共用这一个泡。
       // 把已经说完的那截钉成"基线"，等下这条的定稿只能接在它后面，不许把它吃掉。
       if (el._final) { el._base = el._raw || ''; el._final = false; }
@@ -3982,7 +4061,7 @@ function handle(d) {
         if (!buf.text) appendThink(p.thinking);
         closeThink();
       } else if (p.type === 'text' && p.text) {
-        const el = ensureGu();
+        const el = ensureGu(d.dwell_at || Date.now(), d.dwell_message_id);
         el.querySelector('.caret')?.remove();
         // 说完了的这份是权威，**无条件盖掉流式攒的那份**。
         // 同一条消息里多段文本就接着写，别把前一段冲掉。
@@ -4034,10 +4113,15 @@ function handle(d) {
         el.removeAttribute('data-rich');
         trimOrphanTail(el);
         renderRich(el);
+        setMessageTime(el._row || el.parentElement, m.at, m.seq);
         renderAssistantExtras(el, m, activeTurnMeta || {});
       }
       const fallbackEls = Array.from(document.querySelectorAll('#log .gu')).slice(-src.length);
-      fallbackEls.forEach((el, i) => { if (!el.querySelector('.msg-extras')) renderAssistantExtras(el, src[i], activeTurnMeta || {}); });
+      fallbackEls.forEach((el, i) => {
+        const message = src[i];
+        if (message) setMessageTime(el._row || el.parentElement, message.at, message.seq);
+        if (!el.querySelector('.msg-extras')) renderAssistantExtras(el, message, activeTurnMeta || {});
+      });
       activeTurnMeta = null;
     }).catch(() => {});
     setBusy(false);
@@ -6549,16 +6633,40 @@ function codeOf(dt) {   // 票号：年月日拆开，像真小票那样
 }
 
 const tasksBody = document.getElementById('tasksBody');
-document.getElementById('navTasks').onclick = () => { closeDrawer(); sheets.tasks.classList.add('open'); loadDesktopTasks(); };
+let currentTaskId = '';
+let currentTaskRunId = '';
+document.getElementById('navTasks').onclick = () => { closeDrawer(); sheets.tasks.classList.add('open'); currentTaskId = ''; currentTaskRunId = ''; loadDesktopTasks(); };
 function taskDate(value) {
   if (!value) return '尚未运行';
   try { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
   catch { return String(value); }
 }
+function taskFullDate(value) {
+  if (!value) return '尚未记录';
+  try { return new Date(value).toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); }
+  catch { return String(value); }
+}
+function taskDuration(run) {
+  if (!run?.startedAt) return '';
+  const end = run.completedAt ? Date.parse(run.completedAt) : Date.now();
+  const seconds = Math.max(0, Math.round((end - Date.parse(run.startedAt)) / 1000));
+  if (!Number.isFinite(seconds)) return '';
+  return seconds < 60 ? seconds + ' 秒' : Math.floor(seconds / 60) + ' 分 ' + seconds % 60 + ' 秒';
+}
 function taskResultLabel(value) {
-  return ({ running: '运行中', success: '成功', succeeded: '成功', failed: '失败', skipped: '跳过', unknown: '结果未记录' })[value] || '结果未记录';
+  return ({ queued: '等待运行', running: '运行中', success: '成功', succeeded: '成功', failed: '失败', interrupted: '已中断', skipped: '跳过', unknown: '结果未记录' })[value] || '结果未记录';
+}
+function plainTaskText(value) {
+  return String(value || '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .trim();
 }
 let desktopTaskPoll = 0;
+function taskLoading() {
+  tasksBody.innerHTML = '<div class="task-loading"><i></i><i></i><i></i></div>';
+}
 function renderDesktopTasks(data) {
   tasksBody.innerHTML = '';
   const head = document.createElement('div'); head.className = 'sh-head';
@@ -6584,9 +6692,10 @@ function renderDesktopTasks(data) {
     const summary = document.createElement('div'); summary.className = 'task-run-summary'; summary.textContent = task.runSummary || '';
     summary.hidden = !summary.textContent;
     const actions = document.createElement('div'); actions.className = 'task-actions';
-    const run = document.createElement('button'); run.textContent = task.running ? '运行中…' : '立即运行'; run.disabled = !data.control?.available || task.running; run.onclick = () => desktopTaskAction(task.id, 'run', run);
-    const toggle = document.createElement('button'); toggle.textContent = task.enabled ? '暂停' : '恢复'; toggle.disabled = !data.control?.available; toggle.onclick = () => desktopTaskAction(task.id, task.enabled ? 'pause' : 'resume', toggle);
+    const run = document.createElement('button'); run.textContent = task.running ? '运行中…' : '立即运行'; run.disabled = !data.control?.available || task.running; run.onclick = event => { event.stopPropagation(); desktopTaskAction(task.id, 'run', run); };
+    const toggle = document.createElement('button'); toggle.textContent = task.enabled ? '暂停' : '恢复'; toggle.disabled = !data.control?.available; toggle.onclick = event => { event.stopPropagation(); desktopTaskAction(task.id, task.enabled ? 'pause' : 'resume', toggle); };
     actions.append(run, toggle); card.append(name, desc, meta, summary, actions); tasksBody.appendChild(card);
+    card.onclick = () => openTaskDetail(task.id);
   });
   clearTimeout(desktopTaskPoll);
   if (data.items?.some(task => task.running) && sheets.tasks.classList.contains('open')) {
@@ -6594,6 +6703,8 @@ function renderDesktopTasks(data) {
   }
 }
 async function loadDesktopTasks() {
+  clearTimeout(desktopTaskPoll);
+  currentTaskId = ''; currentTaskRunId = '';
   try {
     const r = await fetch('api/desktop-tasks', { cache: 'no-store' });
     const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '任务读取失败');
@@ -6603,21 +6714,120 @@ async function loadDesktopTasks() {
     tasksBody.querySelector('.todo-empty').textContent = '定时任务读不到：' + (error.message || '请检查 Mac 端');
   }
 }
-async function desktopTaskAction(id, action, button) {
+function taskBack(label, fn) {
+  const back = document.createElement('button'); back.className = 'task-back'; back.append(icEl('chevL', 18), document.createTextNode(label)); back.onclick = fn; return back;
+}
+function renderTaskDetail(data) {
+  const task = data.task;
+  tasksBody.innerHTML = '';
+  tasksBody.appendChild(taskBack('全部定时任务', loadDesktopTasks));
+  const hero = document.createElement('section'); hero.className = 'task-detail-hero';
+  const title = document.createElement('h1'); title.textContent = task.name || task.id;
+  const desc = document.createElement('p'); desc.textContent = task.description || '';
+  const status = document.createElement('div'); status.className = 'task-detail-status';
+  [task.enabled ? '已启用' : '已暂停', '周期 · ' + (task.schedule || '未设置'), task.running ? '正在运行' : '上次 · ' + taskDate(task.lastRunAt)].forEach(value => { const item = document.createElement('span'); item.textContent = value; status.appendChild(item); });
+  const actions = document.createElement('div'); actions.className = 'task-actions';
+  const run = document.createElement('button'); run.textContent = task.running ? '运行中…' : '立即运行'; run.disabled = !data.control?.available || task.running; run.onclick = () => desktopTaskAction(task.id, 'run', run, true);
+  const toggle = document.createElement('button'); toggle.textContent = task.enabled ? '暂停' : '恢复'; toggle.disabled = !data.control?.available; toggle.onclick = () => desktopTaskAction(task.id, task.enabled ? 'pause' : 'resume', toggle, true);
+  actions.append(run, toggle); hero.append(title, desc, status, actions); tasksBody.appendChild(hero);
+  const section = document.createElement('div'); section.className = 'task-section-title'; section.textContent = '运行记录 · ' + (data.runs?.length || 0); tasksBody.appendChild(section);
+  if (!data.runs?.length) { const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '还没有运行记录'; tasksBody.appendChild(empty); return; }
+  data.runs.forEach((item, index) => {
+    const row = document.createElement('button'); row.className = 'task-run-row'; row.type = 'button';
+    const dot = document.createElement('span'); dot.className = 'task-run-dot ' + item.status;
+    const main = document.createElement('span'); main.className = 'task-run-main';
+    const top = document.createElement('span'); top.className = 'task-run-top';
+    const name = document.createElement('span'); name.className = 'task-run-name'; name.textContent = (item.sourceLabel || '运行') + ' · ' + taskResultLabel(item.status);
+    const time = document.createElement('span'); time.className = 'task-run-time'; time.textContent = taskDate(item.completedAt || item.startedAt);
+    const copy = document.createElement('span'); copy.className = 'task-run-copy'; copy.textContent = plainTaskText(item.summary) || (item.status === 'running' ? '正在读取运行进度…' : '这次运行没有留下摘要');
+    top.append(name, time); main.append(top, copy); row.append(dot, main); row.onclick = () => openTaskRun(task.id, item.id); tasksBody.appendChild(row);
+    if (!index && ['queued', 'running'].includes(item.status)) desktopTaskPoll = setTimeout(() => openTaskDetail(task.id, { quiet: true }), 2500);
+  });
+}
+async function openTaskDetail(id, options = {}) {
+  clearTimeout(desktopTaskPoll);
+  currentTaskId = id; currentTaskRunId = '';
+  if (!options.quiet) taskLoading();
+  try {
+    const r = await fetch('api/desktop-tasks/' + encodeURIComponent(id), { cache: 'no-store' });
+    const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '任务详情读取失败');
+    if (currentTaskId !== id || currentTaskRunId) return;
+    renderTaskDetail(data);
+  } catch (error) { tasksBody.innerHTML = ''; tasksBody.append(taskBack('全部定时任务', loadDesktopTasks)); const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '任务详情读不到：' + (error.message || '请检查 Mac 端'); tasksBody.appendChild(empty); }
+}
+function renderTaskRun(data) {
+  const { task, run } = data;
+  tasksBody.innerHTML = '';
+  tasksBody.appendChild(taskBack(task.name || '返回任务', () => openTaskDetail(task.id)));
+  const hero = document.createElement('section'); hero.className = 'task-detail-hero';
+  const title = document.createElement('h1'); title.textContent = taskResultLabel(run.status);
+  const desc = document.createElement('p'); desc.textContent = taskFullDate(run.startedAt) + (taskDuration(run) ? ' · 用时 ' + taskDuration(run) : '');
+  const status = document.createElement('div'); status.className = 'task-detail-status';
+  [run.sourceLabel || '运行记录', run.completedAt ? '结束 · ' + taskFullDate(run.completedAt) : '尚未结束'].forEach(value => { const item = document.createElement('span'); item.textContent = value; status.appendChild(item); });
+  hero.append(title, desc, status); tasksBody.appendChild(hero);
+  if (run.summary) { const section = document.createElement('div'); section.className = 'task-section-title'; section.textContent = '结果'; const summary = document.createElement('div'); summary.className = 'run-summary'; summary.textContent = plainTaskText(run.summary); tasksBody.append(section, summary); }
+  const stepTitle = document.createElement('div'); stepTitle.className = 'task-section-title'; stepTitle.textContent = '运行内容'; tasksBody.appendChild(stepTitle);
+  const timeline = document.createElement('div'); timeline.className = 'run-timeline';
+  const steps = run.steps?.length ? run.steps : [{ title: taskResultLabel(run.status), detail: run.summary || '没有更多过程记录', status: run.status }];
+  steps.forEach(item => {
+    const row = document.createElement('div'); row.className = 'run-step';
+    const dot = document.createElement('span'); dot.className = 'run-step-dot ' + (item.status || 'done');
+    const copy = document.createElement('div'); const name = document.createElement('div'); name.className = 'run-step-title'; name.textContent = item.title || '运行进度'; copy.appendChild(name);
+    if (item.detail) { const detail = document.createElement('div'); detail.className = 'run-step-detail'; detail.textContent = plainTaskText(item.detail); copy.appendChild(detail); }
+    row.append(dot, copy); timeline.appendChild(row);
+  });
+  tasksBody.appendChild(timeline);
+  if (run.outputs?.length) {
+    const outTitle = document.createElement('div'); outTitle.className = 'task-section-title'; outTitle.textContent = '输出文件'; const files = document.createElement('div'); files.className = 'run-files';
+    run.outputs.forEach(item => { const row = document.createElement('div'); row.className = 'run-file'; row.append(icEl('fileText', 18), Object.assign(document.createElement('span'), { textContent: item.name || '输出文件' })); files.appendChild(row); });
+    tasksBody.append(outTitle, files);
+  }
+  if (['queued', 'running'].includes(run.status)) desktopTaskPoll = setTimeout(() => openTaskRun(task.id, run.id, { quiet: true }), 2000);
+}
+async function openTaskRun(taskId, runId, options = {}) {
+  clearTimeout(desktopTaskPoll);
+  currentTaskId = taskId; currentTaskRunId = runId;
+  if (!options.quiet) taskLoading();
+  try {
+    const r = await fetch('api/desktop-tasks/' + encodeURIComponent(taskId) + '/runs/' + encodeURIComponent(runId), { cache: 'no-store' });
+    const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '运行记录读取失败');
+    if (currentTaskId !== taskId || currentTaskRunId !== runId) return;
+    renderTaskRun(data);
+  } catch (error) { tasksBody.innerHTML = ''; tasksBody.append(taskBack('返回任务', () => openTaskDetail(taskId))); const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '运行记录读不到：' + (error.message || '请检查 Mac 端'); tasksBody.appendChild(empty); }
+}
+async function desktopTaskAction(id, action, button, stayOnTask = false) {
   button.disabled = true;
   try {
     const r = await fetch('api/desktop-tasks/' + encodeURIComponent(id) + '/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || 'Mac 端没有确认');
     if (action === 'run') note('（任务已交给 Mac 运行）');
-    await loadDesktopTasks();
+    if (stayOnTask || currentTaskId === id) await openTaskDetail(id);
+    else await loadDesktopTasks();
   } catch (error) { note('（定时任务没有执行：' + (error.message || '请检查 Mac 端') + '）', 'err'); button.disabled = false; }
 }
+
+window.onNativeOpenRoute = route => {
+  const parts = String(route || '').split('/').map(part => { try { return decodeURIComponent(part); } catch { return part; } });
+  if (parts[0] === 'task' && parts[1]) {
+    closeDrawer();
+    sheets.tasks.classList.add('open');
+    clearTimeout(desktopTaskPoll);
+    if (parts[2]) openTaskRun(parts[1], parts[2]);
+    else openTaskDetail(parts[1]);
+    return;
+  }
+  if (parts[0] === 'chat' && parts[1]) {
+    sheets.chats.classList.remove('open');
+    switchChat({ id: parts[1], name: 'Claude', current: false });
+  }
+};
 
 document.querySelectorAll('[data-close]').forEach(el => {
   el.onclick = () => {
     const k = el.dataset.close;
     if (k === 'drawer') return closeDrawer();
     if (k === 'tool') { sheetStack = []; }
+    if (k === 'tasks') clearTimeout(desktopTaskPoll);
     const wrap = sheets[k];
     if (k === 'add') return closeAddSheet();
     if (!wrap) return;
@@ -7070,11 +7280,12 @@ async function turnOnPush() {
       return;
     }
     try {
-      window.Android.enableNotifications(window.DWELL_API_BASE, window.DWELL_API_TOKEN || '');
-      await new Promise(resolve => setTimeout(resolve, 350));
-      await pushState();
-      note('（手机通知已交给 Android；后台会定时查看新消息）');
-    } catch (e) { note('（Android 通知没开成）', 'err'); }
+      const result = String(window.Android.enableNotifications(window.DWELL_API_BASE, window.DWELL_API_TOKEN || '') || 'pending');
+      if (result === 'invalid_endpoint') throw new Error('Mac 地址无效，请重新连接');
+      if (result === 'error') throw new Error('Android 没有完成通知初始化');
+      if (result === 'on') { pushVal.textContent = '开着'; note('（手机通知已开启；消息和任务完成都会提醒）'); }
+      else { pushSw.classList.add('wait'); note('（请允许 dwell 发送通知）'); }
+    } catch (e) { note('（通知没开成：' + (e.message || '请重试') + '）', 'err'); }
     return;
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -7102,6 +7313,10 @@ async function turnOnPush() {
 }
 document.getElementById('pushRow').onclick = async () => {
   pushInteractive = true;
+  if (window.Android?.notificationState && String(window.Android.notificationState()) === 'blocked') {
+    try { window.Android.openNotificationSettings?.(); note('（请在系统设置里允许通知，返回后会自动生效）'); } catch {}
+    return;
+  }
   const sub = await pushState();
   if (sub?.native && window.Android?.disableNotifications) {
     window.Android.disableNotifications();
@@ -7110,10 +7325,14 @@ document.getElementById('pushRow').onclick = async () => {
   } else if (sub) note('（门铃已经通着了——他在家想你的时候，你手机会响）');
   else turnOnPush();
 };
+window.onNativeNotificationChanged = (state, message) => {
+  pushSw.classList.remove('wait');
+  pushVal.textContent = state === 'on' ? '开着' : state === 'blocked' ? '被系统挡了' : '还没开';
+  if (pushInteractive && message) note('（' + message + '）', state === 'error' || state === 'blocked' ? 'err' : '');
+};
 if (window.Android?.configureBackend && window.DWELL_API_BASE) {
   try { window.Android.configureBackend(window.DWELL_API_BASE, window.DWELL_API_TOKEN || ''); } catch {}
 }
-window.onNativeNotificationChanged = () => pushState();
 pushState();
 
 document.getElementById('aliveRow').onclick = async () => {
@@ -7532,56 +7751,38 @@ async function loadApi() {
   };
 }
 
-/* 外观：跟随系统 → 常亮 → 常暗 → 转回来。
-   theme-color 也跟着改，连状态栏一起换皮 */
+/* 外观默认跟随系统。夜间模式按钮第一次点是临时反转当前明暗，
+   再点回到自动；theme-color 和 Android 状态栏一起换。 */
 const themeSw = document.getElementById('themeSw');
 function themeNow() {
   try { return localStorage.getItem('homeTheme') || 'auto'; } catch (e) { return 'auto'; }
 }
-function wearTheme(t) {
+function wearTheme(t, persist = true) {
   if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+  else if (t === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
-  try { localStorage.setItem('homeTheme', t); } catch (e) {}
-  const dark = t === 'dark' || (t !== 'dark'
+  if (persist) try { localStorage.setItem('homeTheme', t); } catch (e) {}
+  const dark = t === 'dark' || (t === 'auto'
     && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
   document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.remove());
   const m = document.createElement('meta');
   m.name = 'theme-color'; m.content = dark ? '#262624' : '#faf9f5';
   document.head.appendChild(m);
   themeSw.classList.remove('wait');
-  themeSw.classList.toggle('on', t === 'dark');
+  themeSw.classList.toggle('on', dark);
+  themeSw.dataset.mode = t;
+  try { window.Android?.setDarkMode?.(dark); } catch {}
 }
-document.getElementById('themeRow').onclick = () =>
-  wearTheme(themeNow() === 'dark' ? 'auto' : 'dark');
-wearTheme(themeNow());
-
-/* Android Chrome 的安装入口；没有 beforeinstallprompt 时，给出系统菜单提示。 */
-let installPrompt = null;
-const installRow = document.getElementById('installRow');
-const standalone = () => window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-function setInstallVisible(on) {
-  if (installRow) installRow.hidden = !on;
-}
-setInstallVisible(!standalone());
-window.addEventListener('beforeinstallprompt', (event) => {
-  event.preventDefault();
-  installPrompt = event;
-  setInstallVisible(true);
-});
-window.addEventListener('appinstalled', () => {
-  installPrompt = null;
-  setInstallVisible(false);
-  note('（已经住进手机了）');
-});
-if (installRow) installRow.onclick = async () => {
-  if (!installPrompt) {
-    note('（请在 Chrome 右上角菜单里选择“添加到主屏幕”）');
-    return;
-  }
-  installPrompt.prompt();
-  await installPrompt.userChoice;
-  installPrompt = null;
+document.getElementById('themeRow').onclick = () => {
+  const mode = themeNow();
+  if (mode !== 'auto') { wearTheme('auto'); return; }
+  const systemDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  wearTheme(systemDark ? 'light' : 'dark');
 };
+wearTheme(themeNow());
+if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (themeNow() === 'auto') wearTheme('auto', false);
+});
 
 document.getElementById('rewakeRow').onclick = async () => {
   const v = document.getElementById('rewakeVal');
@@ -7799,6 +8000,12 @@ async function loadChats() {
 
 async function switchChat(item) {
   if (item.current) { sheets.chats.classList.remove('open'); return; }
+  sheets.chats.classList.remove('open');
+  setChatManaging(false);
+  setTitle(chatDisplayTitle(item));
+  resetConversationView({ preserveBusy: false });
+  welcome.classList.add('off');
+  const loading = document.createElement('div'); loading.className = 'chat-open-loading'; loading.innerHTML = '<i></i><i></i><i></i>'; log.appendChild(loading);
   try {
     const response = await fetch('api/chats', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -7806,12 +8013,9 @@ async function switchChat(item) {
     });
     if (!response.ok) throw new Error('switch rejected');
     setArmed(false);
-    setTitle(chatDisplayTitle(item));
-    sheets.chats.classList.remove('open');
-    setChatManaging(false);
     await restartEventStream({ loadHistory: true });
     scroll(true);
-  } catch { note('（会话没有打开，请检查连接）', 'err'); }
+  } catch { loading.remove(); syncWelcome(); note('（会话没有打开，请检查连接）', 'err'); }
 }
 
 document.getElementById('chatsMenu').onclick = () => {

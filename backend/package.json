@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check claude-history.mjs && node --check desktop-tasks.mjs && node --check desktop-task-bridge.mjs",
+    "check": "node --check server.mjs && node --check claude-history.mjs && node --check desktop-tasks.mjs && node --check desktop-task-history.mjs && node --check desktop-task-bridge.mjs",
     "smoke": "node smoke.mjs",
     "news": "node news_daily.mjs"
   },
