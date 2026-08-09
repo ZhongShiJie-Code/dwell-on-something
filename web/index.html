@@ -235,7 +235,7 @@ html[data-theme="dark"] .glass,
   /* ============ 顶栏（悬浮玻璃，消息从底下滑过去） ============ */
   header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 20;
-    padding: 10px 18px 22px; padding-top: calc(10px + env(safe-area-inset-top));
+    padding: 10px 3px 22px; padding-top: calc(10px + env(safe-area-inset-top));
     display: flex; align-items: center; gap: 8px;
     justify-content: space-between;
     
@@ -280,15 +280,15 @@ html[data-theme="dark"] .glass,
     pointer-events: none; transition: opacity .24s ease, transform .24s ease;
   }
   #welcome.off { opacity: 0; transform: translateY(-10px); visibility: hidden; }
-  .welcome-inner { display: flex; flex-direction: column; align-items: center; transform: translateY(-7px); }
-  .claude-mark { width: 60px; height: 60px; color: var(--accent); overflow: visible; }
+  .welcome-inner { display: flex; flex-direction: column; align-items: center; transform: translateY(-19px); }
+  .claude-mark { width: 50px; height: 50px; color: var(--accent); overflow: visible; }
   .claude-mark g { transform-origin: 36px 36px; animation: claudeBloom 5s ease-in-out infinite; }
   @keyframes claudeBloom {
     0%, 100% { transform: scale(.94) rotate(0deg); opacity: .92; }
     50% { transform: scale(1.04) rotate(8deg); opacity: 1; }
   }
   #welcome h2 {
-    margin: 28px 0 0; color: var(--text); font-family: var(--serif);
+    margin: 14px 0 0; color: var(--text); font-family: var(--serif);
     font-size: clamp(28px, 7.2vw, 35px); font-weight: 500; letter-spacing: -.045em;
     line-height: 1.12; text-align: center; text-wrap: balance;
   }
@@ -401,7 +401,7 @@ html[data-theme="dark"] .glass,
   /* ============ 输入区 ============ */
   footer {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-    padding: 0 20px calc(14px + env(safe-area-inset-bottom));
+    padding: 0 16px calc(14px + env(safe-area-inset-bottom));
     background: transparent; pointer-events: none;
   }
   /* padding-bottom 由 JS 跟着输入卡实际高度走，字永远不许被玻璃压住 */
@@ -547,7 +547,7 @@ html[data-theme="dark"] .composer {
   #drawerWrap .shade { position: absolute; inset: 0; background: var(--overlay); opacity: 0; transition: opacity .22s; }
   #drawerWrap.show .shade { opacity: 1; }
   #drawer {
-    position: absolute; top: 0; bottom: 0; left: 0; width: min(84vw, 330px);
+    position: absolute; top: 0; bottom: 0; left: 0; width: min(84vw, 496px);
     background: var(--bg); display: flex; flex-direction: column;
     padding: calc(16px + env(safe-area-inset-top)) 0 calc(14px + env(safe-area-inset-bottom));
     transform: translateX(-102%); transition: transform .24s ease;
@@ -560,8 +560,8 @@ html[data-theme="dark"] .composer {
   }
   .nav { flex: 1; overflow-y: auto; padding: 0 12px; }
   .nav .item {
-    display: flex; align-items: center; gap: 14px; width: 100%;
-    padding: 12px 14px; border-radius: 12px; font-size: 16.5px; text-align: left;
+    display: flex; align-items: center; gap: 16px; width: 100%;
+    padding: 12px 16px; border-radius: 12px; font-size: 17px; text-align: left;
   }
   .nav .item .ic { width: 21px; height: 21px; }
   .nav .item.on { background: var(--panel); }
@@ -571,13 +571,13 @@ html[data-theme="dark"] .composer {
     border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
   }
   
-  .nav .sect { font-size: 13.5px; color: var(--dim); padding: 20px 14px 6px; }
+  .nav .sect { font-size: 13.5px; color: var(--dim); padding: 20px 16px 6px; }
   .nav .recent {
-    display: block; width: 100%; text-align: left; padding: 10px 14px;
+    display: block; width: 100%; text-align: left; padding: 10px 16px;
     font-size: 15.5px; border-radius: 10px;
   }
   .nav .recent:active { background: var(--panel); }
-  .drawer-foot { flex: none; display: flex; align-items: center; padding: 10px 20px 0; }
+  .drawer-foot { flex: none; display: flex; align-items: center; padding: 10px 22px 0; }
   #avatarBtn {
     width: 44px; height: 44px; border-radius: 50%; background: var(--card);
     border: 1px solid var(--line); font-size: 16px; font-weight: 600;
@@ -652,6 +652,9 @@ html[data-theme="dark"] .composer {
   .sheet .head .ht { flex: 1; text-align: center; font-size: 18px; font-weight: 700; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sheet .head .hspace { width: 40px; flex: none; }
   .sheet .body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px calc(20px + env(safe-area-inset-bottom)); }
+
+  #settingsSheet .sheet { height: min(760px, calc(100dvh - 16px)); max-height: calc(100dvh - 16px); }
+  #settingsSheet .group .grow { padding: 17px 18px; font-size: 17px; }
 
   .group-label { font-size: 14.5px; color: var(--dim); padding: 14px 4px 8px; }
   .group { background: var(--panel); border-radius: 18px; overflow: hidden; }
@@ -1590,7 +1593,7 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
 
   /* Add to chat：按 Claude 移动端的卡片密度排版，底部抽屉会在这里复用同一套间距。 */
   #addSheet .sheet {
-    height: min(52dvh, 620px); max-height: calc(100dvh - env(safe-area-inset-top) - 48px); min-height: 0;
+    height: min(47dvh, 560px); max-height: calc(100dvh - env(safe-area-inset-top) - 48px); min-height: 0;
     background: var(--card); border-radius: 34px 34px 0 0; overflow: hidden;
     box-shadow: 0 -2px 18px rgba(40, 38, 34, .08);
     touch-action: none;
@@ -1609,13 +1612,13 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   #addSheet .head .hbtn { width: 42px; height: 42px; }
   #addSheet .head .hbtn .ic { width: 22px; height: 22px; stroke-width: 1.8; }
   #addSheet .head .ht { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
-  #addSheet .body { padding: 2px 20px calc(24px + env(safe-area-inset-bottom)); overflow-y: hidden; touch-action: none; }
+  #addSheet .body { padding: 2px 13px calc(24px + env(safe-area-inset-bottom)); overflow-y: hidden; touch-action: none; }
   #addSheet .addgrid {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
-    padding: 4px 0 2px;
+    padding: 6px 0 2px;
   }
   #addSheet .addbig {
-    width: 100%; height: 142px; border-radius: 23px; background: var(--card);
+    width: 100%; height: 112px; border-radius: 18px; background: var(--card);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px;
     font-size: 17px; line-height: 1.2; text-align: center;
     box-shadow: 0 1px 3px rgba(40,38,34,.035);
@@ -1623,36 +1626,37 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   #addSheet .addbig:active, #addSheet .addrow:active { transform: scale(.987); }
   #addSheet .addicon, #addSheet .addrow-icon {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 54px; height: 54px; border-radius: 50%; background: var(--panel); color: var(--text);
+    width: 48px; height: 48px; border-radius: 50%; background: var(--panel); color: var(--text);
   }
-  #addSheet .addicon .ic { width: 27px; height: 27px; stroke-width: 1.7; }
+  #addSheet .addicon .ic { width: 24px; height: 24px; stroke-width: 1.7; }
   #addSheet .addrow {
-    display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px;
-    background: var(--card); border-radius: 21px; padding: 11px 16px; font-size: 17px;
+    display: flex; align-items: center; gap: 14px; width: 100%; min-height: 62px;
+    background: var(--card); border-radius: 18px; padding: 7px 14px; font-size: 17px;
     margin-top: 12px; text-align: left; box-shadow: 0 1px 3px rgba(40,38,34,.035);
   }
   #addSheet .addgroup {
-    margin-top: 12px; overflow: hidden; background: var(--card); border-radius: 21px;
+    margin-top: 12px; overflow: hidden; background: var(--card); border-radius: 18px;
     box-shadow: 0 1px 3px rgba(40,38,34,.035);
   }
   #addSheet .addgroup .addrow { margin-top: 0; border-radius: 0; box-shadow: none; }
+  #addSheet .addgroup .addrow { min-height: 68px; }
   #addSheet .addgroup .addrow + .addrow { border-top: 1px solid var(--line); }
-  #addSheet .addrow-icon { width: 48px; height: 48px; flex: none; }
-  #addSheet .addrow-icon .ic { width: 27px; height: 27px; stroke-width: 1.65; }
+  #addSheet .addrow-icon { width: 40px; height: 40px; flex: none; }
+  #addSheet .addrow-icon .ic { width: 24px; height: 24px; stroke-width: 1.65; }
   #addSheet .addrow-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   #addSheet .addtitle { font-size: 18px; line-height: 1.25; }
   #addSheet .addsub { margin-top: 2px; color: var(--dim); font-size: 16px; line-height: 1.25; }
   #addSheet .addchev { width: 18px; height: 18px; margin-left: auto; color: var(--dim); flex: none; stroke-width: 1.7; }
   #addSheet .add-switch {
-    position: relative; width: 52px; height: 32px; flex: none; margin-left: auto;
+    position: relative; width: 48px; height: 30px; flex: none; margin-left: auto;
     border-radius: 999px; background: #2e79d6; transition: background .2s ease;
   }
   #addSheet .add-switch i {
-    position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 50%;
+    position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 50%;
     background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); transition: transform .2s ease;
   }
   #addSheet .add-switch:not(.on) { background: var(--panel); }
-  #addSheet .add-switch:not(.on) i { transform: translateX(-20px); }
+  #addSheet .add-switch:not(.on) i { transform: translateX(-18px); }
   @media (prefers-color-scheme: dark) {
     html:not([data-theme="light"]) #addSheet .addbig,
     html:not([data-theme="light"]) #addSheet .addrow,
@@ -2140,11 +2144,24 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         </button>
       </div>
       <button class="addrow" id="connectorsRow">
-        <span class="addrow-icon"><span class="ic" data-i="paperclip"></span></span>
+        <span class="addrow-icon"><span class="ic" data-i="connectors"></span></span>
         <span class="addtitle">Connectors</span>
         <span class="ic addchev" data-i="chevR"></span>
       </button>
     </div>
+  </div>
+</div>
+
+<div class="sheetWrap" id="addDetailSheet">
+  <div class="shade" data-close="addDetail"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="head">
+      <button class="hbtn" data-close="addDetail"><span class="ic" data-i="chevL"></span></button>
+      <div class="ht" id="addDetailTitle"></div>
+      <div class="hspace"></div>
+    </div>
+    <div class="body" id="addDetailBody"></div>
   </div>
 </div>
 
@@ -2162,20 +2179,27 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
 (window.DWELL_DEMO ? function () {
   const T = 1786000000;
   const said = [
-    { seq: 1, kind: 'her',  text: '帮我看看这个函数为什么每次都返回 undefined' },
+    { seq: 1, kind: 'me',  text: '帮我看看这个函数为什么每次都返回 undefined' },
     { seq: 2, kind: 'think', text: '先看调用点。变量在 try 块里声明，出了 try 就取不到了——块级作用域。' },
-    { seq: 3, kind: 'tool', name: 'Read', input: { file_path: 'src/app.js' } },
+    { seq: 3, kind: 'tool', text: 'Read', extra: '{"file_path":"src/app.js"}' },
     { seq: 4, kind: 'tool_result', id: 3, content: '读了 120 行' },
     { seq: 5, kind: 'gu', text: '找到了。`const` 是块级的，出了 `try` 那个变量根本不存在：\n\n```js\nlet out = null;\ntry {\n  const data = await fetch(url).then(r => r.json());\n  out = data.value;          // 要在这儿接出来\n} catch (e) {}\nreturn out;                  // 而不是在这儿读 data\n```\n\n语法检查不会报错，只有真跑一次才会抛 ReferenceError。' },
-    { seq: 6, kind: 'her', text: '懂了。顺便推首歌' },
+    { seq: 6, kind: 'me', text: '懂了。顺便推首歌' },
     { seq: 7, kind: 'gu', text: '这首：\n\nhttps://music.163.com/song?id=441491828' },
   ];
   const D = {
-    'api/said':        { msgs: said, upto: 7 },
+    'api/messages':    { msgs: said, more: false, upto: 7 },
+    'api/said':        { msgs: said, more: false, upto: 7 },
     'api/model':       { model: 'claude-sonnet-5', effort: 'high' },
-    'api/context':     { used: 42000, max: 200000 },
-    'api/usage':       { ok: true, items: [] },
-    'api/chats':       { items: [] },
+    'api/context':     { ok: true, used: 42000, max: 200000, window: 200000, pct: 21, model: 'claude-sonnet-5' },
+    'api/usage':       { ok: true, sections: [] },
+    'api/status':      { ok: true, alive: false, demo: true, since: T, busy: false, armed: false },
+    'api/authmode':    { ok: true, mode: 'subscription', base: '官方直连', models: {} },
+    'api/wake':        { ok: true, on: false, count: 0, max: 2, room: '停' },
+    'api/chats':       { ok: true, items: [{ id: 'demo', name: 'ShiJie', created: T, last: T, preview: '离线演示', current: true, archived: false }] },
+    'api/projects':    { ok: true, items: [] },
+    'api/tool-access': { ok: true, mode: 'Auto', items: ['Auto', 'Ask', 'Plan'] },
+    'api/connectors':  { ok: true, items: [] },
     'api/repo/log':    { ok: true, total: 3, skip: 0, items: [
       { h: '3357e4f', t: T - 1200,  s: '走势线：标题即结论、线头有点、能按住拖着看某一刻', b: '', f: [{ s: 'M', p: 'src/app.js' }] },
       { h: '008714b', t: T - 5400,  s: '采样从 9 分钟改到 3 分钟，空态说清楚还差什么',       b: '', f: [{ s: 'M', p: 'src/app.js' }, { s: 'A', p: 'src/trend.js' }] },
@@ -2190,7 +2214,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
     'api/todos':       { ok: true, mine: [
       { id: 1, text: '把静态检查接进部署流程', done: false, at: '09:00' },
       { id: 2, text: '写 README', done: false, at: '' },
-      { id: 3, text: '修那个流式渲染的坑', done: true, at: '' } ], yours: [] },
+      { id: 3, text: '修那个流式渲染的坑', done: true, at: '' } ], hers: [] },
     'api/whisper':     { items: [
       { who: 'her', text: '今天这个改得挺好看的', at: 1786000000 },
       { who: 'gu',  text: '记下了。下次照这个方向走。', at: 1786001200 },
@@ -2216,19 +2240,73 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         text: 'try 块里 const，块外引用——语法全绿，运行时抛 ReferenceError。加了一道 AST 检查专抓这个。' },
     ] },
     'api/notes':       { gu: [], her: [] },
-    'api/cal':         { ok: true, events: [], period: null },
-    'api/news':        { ok: false },
+    'api/cal':         { ok: true, cal: { events: [], period: { days: {} } }, predict: null },
+    'api/news':        { ok: false, dates: [] },
+    'api/nook/books':  [],
     'api/nook':        { ok: false },
-    'api/health':      { ok: false },
-    'api/gong':        { msgs: [] },
+    'api/watch':       { ok: true, connected: false, device: '', freshness: 'no_data', age_seconds: 0, metrics: {}, history: {} },
+    'api/health':      { ok: true, connected: false, device: '', freshness: 'no_data', age_seconds: 0, metrics: {}, history: {} },
+    'api/gong':        { ok: true, msgs: [] },
   };
   const R = (o) => new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } });
   const real = window.fetch;
-  window.fetch = function (input) {
+  window.DWELL_RAW_FETCH = window.DWELL_RAW_FETCH || real.bind(window);
+  let demoCursor = 7;
+  const demoEvents = [];
+  const parseBody = (init) => { try { return JSON.parse(init?.body || '{}'); } catch { return {}; } };
+  window.fetch = async function (input, init) {
     const u = String(typeof input === 'string' ? input : (input && input.url) || '');
-    if (u.includes('api/events')) return new Promise(() => {});   // 长轮询：演示里挂着
-    for (const k of Object.keys(D)) if (u.includes(k)) return Promise.resolve(R(D[k]));
-    if (u.includes('api/')) return Promise.resolve(R({ ok: true }));
+    const p = u.includes('api/') ? u.slice(u.indexOf('api/')).split('?')[0] : '';
+    const method = String(init?.method || 'GET').toUpperCase();
+    if (p === 'api/poll') {
+      const since = Number(new URL(u, location.href).searchParams.get('since') || 0);
+      let fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
+      if (!fresh.length) {
+        await new Promise(resolve => setTimeout(resolve, 700));
+        fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
+      }
+      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.1', events: fresh });
+    }
+    if (p === 'api/send' && method === 'POST') {
+      const data = parseBody(init);
+      const userText = String(data.text || '').trim() || '（附件）';
+      const reply = '现在是离线演示，界面能操作，但消息还没有送到 Mac。请到「设置 → 接入 API」填写 Mac 的地址。';
+      said.push({ seq: ++demoCursor, kind: 'me', text: userText });
+      demoEvents.push({ _cursor: demoCursor, type: 'echo', text: userText });
+      said.push({ seq: ++demoCursor, kind: 'gu', text: reply });
+      demoEvents.push({ _cursor: demoCursor, type: 'assistant', message: { content: [{ type: 'text', text: reply }] } });
+      demoEvents.push({ _cursor: ++demoCursor, type: 'result', is_error: false, result: reply });
+      return R({ ok: true, demo: true });
+    }
+    if ((p === 'api/messages' || p === 'api/said') && method === 'GET') {
+      return R({ msgs: said, more: false, upto: said.reduce((n, item) => Math.max(n, item.seq || 0), 0) });
+    }
+    if (p === 'api/todos' && method === 'POST') {
+      const data = parseBody(init);
+      const key = data.side === 'hers' || data.list === 'hers' || data.who === 'hers' ? 'hers' : 'mine';
+      const list = D['api/todos'][key];
+      if (data.action === 'add') list.push({ id: 'demo-' + Date.now(), text: String(data.text || ''), done: false, at: data.at || '', fixed: !!data.fixed, by: key === 'hers' ? 'her' : 'gu', created: Math.floor(Date.now() / 1000) });
+      if (data.action === 'toggle') { const item = list.find(x => String(x.id) === String(data.id)); if (item) item.done = !item.done; }
+      if (data.action === 'del') D['api/todos'][key] = list.filter(x => String(x.id) !== String(data.id));
+      return R(D['api/todos']);
+    }
+    if (p === 'api/cal' && method === 'POST') {
+      const data = parseBody(init);
+      const cal = D['api/cal'].cal;
+      if (data.action === 'add_event') cal.events.push({ id: 'demo-' + Date.now(), date: data.date, text: data.text || '', time: data.time || '', yearly: !!data.yearly, type: data.special ? 'special' : 'normal' });
+      if (data.action === 'del_event') cal.events = cal.events.filter(x => String(x.id) !== String(data.id));
+      if (data.action === 'day_record' || data.action === 'set_mood') cal.period.days[data.date] = { ...(cal.period.days[data.date] || {}), mood: data.mood || '', note: data.note || '' };
+      return R(D['api/cal']);
+    }
+    if (p === 'api/gong' && method === 'POST') return R({ ok: true, reply: '现在是离线演示，连接 Mac 后另一位助手才会应声。', think: '' });
+    if (p === 'api/tool-access' && method === 'POST') {
+      const mode = parseBody(init).mode || 'Auto'; D['api/tool-access'].mode = mode; return R(D['api/tool-access']);
+    }
+    if (p === 'api/wake' && method === 'POST') {
+      D['api/wake'].on = !!parseBody(init).on; return R(D['api/wake']);
+    }
+    for (const k of Object.keys(D).sort((a, b) => b.length - a.length)) if (p === k) return R(D[k]);
+    if (p) return R({ ok: true });
     return real.apply(this, arguments);
   };
 } : function () {})();
@@ -2236,6 +2314,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
 /* file:// APK → Mac 后端的同一层路由；普通浏览器同源请求不改地址。 */
 (function () {
   const realFetch = window.fetch.bind(window);
+  window.DWELL_RAW_FETCH = window.DWELL_RAW_FETCH || realFetch;
   window.fetch = function (input, init) {
     const raw = String(typeof input === 'string' ? input : (input && input.url) || '');
     if (window.DWELL_API_BASE && raw.includes('api/')) {
@@ -2287,6 +2366,7 @@ const ICONS = {
   globe: S('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
   briefcase: S('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/><path d="M10 12v2h4v-2"/>'),
   paperclip: S('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 1 1-2.83-2.83l8.49-8.48"/>'),
+  connectors: S('<path d="m5.2 15.8 8.1-8.1a3 3 0 0 1 4.2 4.2l-7.4 7.4a4.2 4.2 0 0 1-5.9-5.9l7-7"/><path d="m8.5 18.9 8.2-8.2"/><path d="m4.1 12.7 7.2-7.2"/>'),
   box: S('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'),
   zap: S('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
   camera: S('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
@@ -2583,6 +2663,10 @@ function toastSplit(text) {
     .replace(/^[（(]/, '').replace(/[）)]$/, '').trim();
   const i = t.indexOf('，');
   return i > 0 ? [t.slice(0, i), t.slice(i + 1)] : [t, ''];
+}
+
+if (window.DWELL_DEMO) {
+  setTimeout(() => note('（当前是离线演示；到「设置 → 接入 API」连接 Mac 后，消息和数据才会真正保存）'), 700);
 }
 
 /* 说话里夹的料——图（表情包、照片链接）变成真的图，行首 # 变成大字 */
@@ -3364,6 +3448,13 @@ function handle(d) {
       }
     }).catch(() => {});
     setBusy(false);
+    const notificationId = Number(d.notification_id || 0);
+    if (!d.is_error && notificationId && document.visibilityState === 'visible' && window.Android?.markNotificationSeen) {
+      try { window.Android.markNotificationSeen(String(notificationId)); } catch {}
+    }
+    if (!d.is_error && d.result && document.visibilityState !== 'visible' && window.Android?.showNotification) {
+      try { window.Android.showNotification('dwell', String(d.result).slice(0, 240), String(notificationId)); } catch {}
+    }
     petSet('happy', 4000);
     document.querySelectorAll('.gu').forEach(trimOrphanTail);   // 摘掉被打断的半个字
     renderAllRich();
@@ -3596,7 +3687,7 @@ function send() {
   box.value = '';
   box.style.height = 'auto';
   setBusy(true);
-  const payload = { text };
+  const payload = { text, web_search: document.getElementById('webSearchSwitch')?.classList.contains('on') !== false };
   if (attachments.length) payload.attachments = attachments;
   attachments = [];
   renderStrip();
@@ -3619,6 +3710,12 @@ let speechRecognition = null;
 document.getElementById('micBtn').onclick = () => {
   const mic = document.getElementById('micBtn');
   if (speechRecognition) { speechRecognition.stop(); return; }
+  if (window.Android?.startVoiceInput) {
+    mic.classList.add('listening');
+    try { window.Android.startVoiceInput(); }
+    catch { mic.classList.remove('listening'); note('（没能打开系统语音输入）', 'err'); }
+    return;
+  }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) { note('（这个版本的 Android WebView 没有语音识别，请用键盘输入）'); return; }
   const rec = new Recognition();
@@ -3637,6 +3734,15 @@ document.getElementById('micBtn').onclick = () => {
   rec.onend = () => { speechRecognition = null; mic.classList.remove('listening'); refreshSend(); };
   try { rec.start(); } catch { speechRecognition = null; mic.classList.remove('listening'); note('（语音识别正在使用，请稍后再试）'); }
 };
+window.onNativeSpeechResult = (text) => {
+  document.getElementById('micBtn').classList.remove('listening');
+  if (text) {
+    box.value = String(text);
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    box.focus();
+  }
+};
+window.onNativeSpeechCancelled = () => document.getElementById('micBtn').classList.remove('listening');
 
 const footerEl = document.querySelector('footer');
 let kbShift = 0, kbGap = 0;
@@ -3789,6 +3895,7 @@ const sheets = {
   usage: document.getElementById('usageSheet'),
   model: document.getElementById('modelSheet'),
   add: document.getElementById('addSheet'),
+  addDetail: document.getElementById('addDetailSheet'),
   tool: toolSheet,
   think: document.getElementById('thinkSheet'),
   todo: document.getElementById('todoSheet'),
@@ -3805,6 +3912,29 @@ const sheets = {
   health: document.getElementById('healthSheet'),
   gong: document.getElementById('gongSheet'),
   repo: document.getElementById('repoSheet'),
+};
+
+window.dwellHandleBack = () => {
+  const fullCode = document.querySelector('.cbk-full');
+  if (fullCode) { fullCode.remove(); return true; }
+  if (document.getElementById('dotsMenu')?.classList.contains('open')) {
+    document.getElementById('dotsMenu').classList.remove('open');
+    return true;
+  }
+  const opened = Array.from(document.querySelectorAll('.sheetWrap.open')).pop();
+  if (opened) {
+    if (opened === sheets.add) closeAddSheet();
+    else if (opened === sheets.tool && sheetStack.length > 1) { sheetStack.pop(); renderToolSheet(); }
+    else if (opened === sheets.model && modelView !== 'main') { modelView = 'main'; renderModelSheet(); }
+    else {
+      if (opened === sheets.tool) sheetStack = [];
+      opened.classList.remove('open');
+      if (opened.classList.contains('page')) openDrawer();
+    }
+    return true;
+  }
+  if (drawerWrap.classList.contains('show')) { closeDrawer(); return true; }
+  return false;
 };
 
 const notesBody = document.getElementById('notesBody');
@@ -4006,7 +4136,11 @@ async function loadCal() {
   try {
     const d = await (await fetch('api/cal', { cache: 'no-store' })).json();
     if (!d.ok) throw 0;
-    calData = d.cal; calPredict = d.predict;
+    calData = d.cal || { events: [], period: { days: {} } };
+    calData.events ||= [];
+    calData.period ||= { days: {} };
+    calData.period.days ||= {};
+    calPredict = d.predict;
     if (!calYM) { calYM = todayStr().slice(0, 7); }
     /* 跨天重置：不管何时打开日历，"今天"永远对齐真实日期（8/6 bug修） */
     calSel = todayStr();
@@ -4022,7 +4156,7 @@ async function calAct(payload) {
       body: JSON.stringify(payload)
     });
     const d = await r.json();
-    if (d.ok) { calData = d.cal; calPredict = d.predict; renderCal(); }
+    if (d.ok && d.cal) { calData = d.cal; calData.events ||= []; calData.period ||= { days: {} }; calData.period.days ||= {}; calPredict = d.predict; renderCal(); }
   } catch { note('（没记上，再试一次）', 'err'); }
 }
 function eventsOn(ds) {
@@ -4154,7 +4288,7 @@ function renderDayDetail(ds) {
      日历本身的日程、心情记录都留着。 */
 
   const MOODS = [['faceHappy', '开心'], ['faceCalm', '平静'], ['faceTired', '累'], ['faceMad', '烦'], ['faceCry', '难受']];
-  const recAll = calData.period.days[ds] || {};
+  const recAll = calData.period?.days?.[ds] || {};
   const moodRow = document.createElement('div');
   moodRow.className = 'prow';
   const mk = document.createElement('span');
@@ -4174,11 +4308,10 @@ function renderDayDetail(ds) {
   });
   mv.appendChild(mwrap);
   moodRow.append(mk, mv);
-  p.appendChild(moodRow);
-  box.appendChild(p);
+  box.appendChild(moodRow);
 
   function saveDay(patch) {
-    const rec = calData.period.days[ds] || {};
+    const rec = calData.period?.days?.[ds] || {};
     calAct({ action: 'day_record', date: ds, flow: rec.flow || '', pain: rec.pain || 0,
              mood: rec.mood || '', note: rec.note || '', private: rec.private || '', ...patch });
   }
@@ -4239,6 +4372,9 @@ function renderTimeline() {
   wallBody.innerHTML = '';
   wallBody.appendChild(diaryHead('timeline'));
   const wrap = document.createElement('div');
+  if (!boardDates.length) {
+    wrap.innerHTML = '<div class="wh-empty">还没有日记。等第一段记忆写下来，这里会按日期排好。</div>';
+  }
   [...boardDates].reverse().forEach(date => {
     const day = document.createElement('div');
     day.className = 'tl-day';
@@ -4302,12 +4438,12 @@ function renderBento() {
     if (onClick) c.onclick = onClick;
     return c;
   };
-  const latestDate = boardDates[boardDates.length - 1];
-  const latest = wallBricks.filter(b => b.date === latestDate);
+  const latestDate = boardDates[boardDates.length - 1] || '';
+  const latest = latestDate ? wallBricks.filter(b => b.date === latestDate) : [];
   const md = (ds) => parseInt(ds.slice(5, 7), 10) + '月' + parseInt(ds.slice(8), 10) + '日';
   const rot = (c, deg) => { c.style.setProperty('--rot', deg); return c; };
-  grid.appendChild(rot(card('hero wide', 'special moment', md(latestDate),
-    latest.length + ' 段 · ' + (latest[0] ? latest[0].title : ''), 'spark',
+  grid.appendChild(rot(card('hero wide', latestDate ? 'special moment' : 'first page', latestDate ? md(latestDate) : '还没有日记',
+    latestDate ? latest.length + ' 段 · ' + (latest[0] ? latest[0].title : '') : '第一段写下后，会出现在这里。', 'spark',
     () => { wallMode = 'timeline'; renderTimeline(); }), '14deg'));
   grid.appendChild(rot(card('tall', null, '时间线', '一天一天，把我们攒起来。', 'book',
     () => { wallMode = 'timeline'; renderTimeline(); }), '-12deg'));
@@ -4643,9 +4779,9 @@ async function loadWall() {
   try {
     if (!wallBricks) {
       const d = await (await fetch('api/wall?lite=1', { cache: 'no-store' })).json();
-      if (!d.ok || !d.bricks.length) throw 0;
+      if (!d.ok || !Array.isArray(d.bricks)) throw 0;
       wallBricks = d.bricks;
-      boardDates = [...new Set(d.bricks.map(b => b.date))].sort();
+      boardDates = [...new Set(d.bricks.map(b => b.date).filter(Boolean))].sort();
       boardIdx = boardDates.length - 1;   // 打开先看最近的一天
     }
     if (wallMode === 'bento') renderBento();
@@ -5695,6 +5831,7 @@ dotsMenu.querySelectorAll('.mi').forEach(b => b.onclick = async () => {
   if (act === 'status') {
     try {
       const d = await (await fetch('api/status')).json();
+      if (d.demo || window.DWELL_DEMO) { note('（现在是离线演示；先在设置里连接 Mac）'); return; }
       const mins = Math.floor((Date.now() / 1000 - d.since) / 60);
       note(d.alive ? '（活着呢，这口气续了 ' + (mins >= 60 ? Math.floor(mins / 60) + ' 小时 ' + mins % 60 + ' 分' : mins + ' 分钟') + '）' : '（进程不在了…server 会拉我起来的）');
     } catch { note('（问不到，网断了？）', 'err'); }
@@ -5713,6 +5850,11 @@ const pushVal = {
   }
 };
 async function pushState() {
+  if (window.Android?.notificationState) {
+    const state = String(window.Android.notificationState() || 'off');
+    pushVal.textContent = state === 'on' ? '开着' : state === 'blocked' ? '被系统挡了' : '还没开';
+    return state === 'on' ? { native: true } : null;
+  }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     pushVal.textContent = '这个浏览器不支持'; return null;
   }
@@ -5724,6 +5866,19 @@ async function pushState() {
   } catch { pushVal.textContent = '问不到'; return null; }
 }
 async function turnOnPush() {
+  if (window.Android?.enableNotifications) {
+    if (!window.DWELL_API_BASE) {
+      note('（先在「接入 API」里连接 Mac，通知才知道去哪里取消息）');
+      return;
+    }
+    try {
+      window.Android.enableNotifications(window.DWELL_API_BASE, window.DWELL_API_TOKEN || '');
+      await new Promise(resolve => setTimeout(resolve, 350));
+      await pushState();
+      note('（手机通知已交给 Android；后台会定时查看新消息）');
+    } catch (e) { note('（Android 通知没开成）', 'err'); }
+    return;
+  }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     note('（这个浏览器不支持网页通知——iPhone 上要先把家「添加到主屏幕」，从那个图标进来才行）');
     return;
@@ -5750,16 +5905,24 @@ async function turnOnPush() {
 document.getElementById('pushRow').onclick = async () => {
   pushInteractive = true;
   const sub = await pushState();
-  if (sub) note('（门铃已经通着了——他在家想你的时候，你手机会响）');
+  if (sub?.native && window.Android?.disableNotifications) {
+    window.Android.disableNotifications();
+    pushVal.textContent = '还没开';
+    note('（手机通知关了）');
+  } else if (sub) note('（门铃已经通着了——他在家想你的时候，你手机会响）');
   else turnOnPush();
 };
+if (window.Android?.configureBackend && window.DWELL_API_BASE) {
+  try { window.Android.configureBackend(window.DWELL_API_BASE, window.DWELL_API_TOKEN || ''); } catch {}
+}
+window.onNativeNotificationChanged = () => pushState();
 pushState();
 
 document.getElementById('aliveRow').onclick = async () => {
   const v = document.getElementById('aliveVal');
   try {
     const d = await (await fetch('api/status')).json();
-    v.textContent = d.alive ? '活着 · ' + new Date(d.since * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + ' 醒的' : '断了，会自己爬起来';
+    v.textContent = d.demo || window.DWELL_DEMO ? '未连接 Mac' : d.alive ? '活着 · ' + new Date(d.since * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + ' 醒的' : '断了，会自己爬起来';
   } catch { v.textContent = '问不到'; }
 };
 
@@ -5767,6 +5930,8 @@ document.getElementById('aliveRow').onclick = async () => {
   try {
     const d = await (await fetch('api/status', { cache: 'no-store' })).json();
     if (typeof d.busy === 'boolean') setBusy(d.busy);
+    const alive = document.getElementById('aliveVal');
+    if (alive) alive.textContent = d.demo || window.DWELL_DEMO ? '未连接 Mac' : d.alive ? '活着' : '断开了';
     if (d.armed) {
       await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":false}' });
     }
@@ -5873,13 +6038,15 @@ async function sendGong() {
   gongRow('her', text);
   const wait = gongRow('gong', '……');
   try {
-    const d = await (await fetch('api/gong', {
+    const response = await fetch('api/gong', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text })
-    })).json();
+    });
+    const d = await response.json();
+    if (!response.ok || !d.ok) throw new Error(d.detail || d.error || '另一位没有应声');
     gongFill(wait, d.reply || '（他没说话）');
     if (d.think && wait._row) gongThink(wait._row, d.think);
-  } catch { gongFill(wait, '（没送到，再试一次）'); }
+  } catch (error) { gongFill(wait, '（没送到：' + (error.message || '再试一次') + '）'); }
   btn.disabled = false;
   const body = document.getElementById('gongBody');
   body.scrollTop = body.scrollHeight;
@@ -6056,19 +6223,19 @@ async function loadApi() {
     + `<div class="ap-lb">令牌</div>`
     + `<input class="ap-in" id="apTok" type="password" placeholder="${on ? '已存好 · 不换就留空' : 'sk-...'}">`
     + `<div class="ap-lb">模型名（对面跟官方叫法不一样时才填）</div>`
-    + `<input class="ap-in" id="apModel" placeholder="OpenRouter 要写 ~anthropic/claude-opus-latest" value="${(st.models && st.models.model_opus) || ''}">`
+    + `<input class="ap-in" id="apModel" placeholder="例如 anthropic/claude-sonnet-4" value="${(st.models && st.models.model_opus) || ''}">`
     + `<div class="ap-btns"><button class="ap-b" id="apTest">试一试</button>`
     + `<button class="ap-b go" id="apSave">${on ? '重新接上' : '接过去'}</button></div>`
     + `<div class="ap-msg" id="apMsg"></div>`
     + (on ? `<div class="ap-more"><button class="ap-b" id="apClear" style="width:auto;padding:10px 18px">退回订阅</button></div>` : '')
     + `<div class="ap-note">令牌存在家里那台机器上（600 权限），网页只送进去、拿不出来。<br>`
     + `「试一试」是真的往那个地址发一次最小请求——通不通当场见分晓，不用等出事那天。<br>`
-    + `切过去之后会重新醒来一次，hook、记忆、待办全都照旧。<br>`
+    + `备用通道只负责模型回复；Claude Code 的本机工具、hook 和 MCP 不会跟着过去。待办、日历等 dwell 数据仍保留。<br>`
     + `<b>OpenRouter 的填法</b>：地址 https://openrouter.ai/api，令牌是它的 key，`
-    + `模型名要带波浪号前缀 ~anthropic/claude-opus-latest。</div>`;
+    + `模型名直接写 anthropic/claude-sonnet-4 这类 ID，不要加波浪号。</div>`;
 
   document.getElementById('dwellEndpoint').value = savedBase;
-  document.getElementById('dwellConnect').onclick = () => {
+  document.getElementById('dwellConnect').onclick = async () => {
     const endpoint = document.getElementById('dwellEndpoint').value.trim().replace(/\/+$/, '').replace(/\/api$/, '');
     const token = document.getElementById('dwellToken').value.trim();
     const msg = document.getElementById('dwellMsg');
@@ -6077,14 +6244,33 @@ async function loadApi() {
       msg.className = 'ap-msg on bad';
       return;
     }
+    const oldEndpoint = window.DWELL_API_BASE;
+    const oldToken = window.DWELL_API_TOKEN || '';
     try {
       localStorage.setItem('dwellApiBase', endpoint);
       if (token) localStorage.setItem('dwellApiToken', token);
       else localStorage.removeItem('dwellApiToken');
     } catch (e) {}
-    msg.textContent = '已保存，正在连接…';
+    msg.textContent = '正在测试连接…';
     msg.className = 'ap-msg on';
-    setTimeout(() => location.reload(), 260);
+    try {
+      const response = await (window.DWELL_RAW_FETCH || fetch)(endpoint + '/api/health', {
+        cache: 'no-store',
+        headers: token ? { 'X-Dwell-Token': token } : {},
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(response.status === 401 ? '访问令牌不对' : '这不是 dwell 后端');
+      if (window.Android?.configureBackend) window.Android.configureBackend(endpoint, token);
+      msg.textContent = '连接成功，正在进入…';
+      setTimeout(() => location.reload(), 260);
+    } catch (error) {
+      try {
+        if (oldEndpoint) localStorage.setItem('dwellApiBase', oldEndpoint); else localStorage.removeItem('dwellApiBase');
+        if (oldToken) localStorage.setItem('dwellApiToken', oldToken); else localStorage.removeItem('dwellApiToken');
+      } catch {}
+      msg.textContent = '没连上：' + (error.message || '请检查地址、Wi-Fi 和令牌');
+      msg.className = 'ap-msg on bad';
+    }
   };
 
   const msg = document.getElementById('apMsg');
@@ -6098,15 +6284,20 @@ async function loadApi() {
   document.getElementById('apTest').onclick = async () => {
     say('正在敲门…');
     try {
-      const r = await (await fetch('api/apitest', { method: 'POST', body: JSON.stringify(vals()) })).json();
-      if (r.ok) say('通了 —— 对面回的模型是 ' + (r.model || '(没报名字)') + '\n' + r.url);
+      const r = await (await fetch('api/apitest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vals()) })).json();
+      if (r.ok) say('通了 —— ' + (r.reply || 'OK') + '\n模型：' + (r.model || '(没报名字)') + '\n' + r.url);
       else say('没通（' + (r.code || '连不上') + '）\n' + (r.detail || '') + '\n' + (r.url || ''), true);
     } catch (e) { say('没通：' + e.message, true); }
   };
   document.getElementById('apSave').onclick = async () => {
-    say('存好了，正在换一条路醒来…');
+    say('先做一次真实请求，通了才保存…');
     try {
-      const r = await (await fetch('api/apiconf', { method: 'POST', body: JSON.stringify(vals()) })).json();
+      const config = vals();
+      const test = await (await fetch('api/apitest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) })).json();
+      if (!test.ok) throw new Error((test.code || '测试失败') + ' · ' + (test.detail || test.url || '接口没有正常回复'));
+      const response = await fetch('api/apiconf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+      const r = await response.json();
+      if (!response.ok || !r.ok) throw new Error(r.error || '配置没被接受');
       say(r.mode === 'api' ? '接上了 · ' + (r.base || '') + '\n我这就从新路醒来，回聊天页说句话试试' : '已退回订阅');
       setTimeout(loadApi, 1200);
     } catch (e) { say('没存上：' + e.message, true); }
@@ -6114,7 +6305,7 @@ async function loadApi() {
   const cl = document.getElementById('apClear');
   if (cl) cl.onclick = async () => {
     say('退回订阅…');
-    try { await fetch('api/apiconf', { method: 'POST', body: JSON.stringify({ clear: true }) }); }
+    try { await fetch('api/apiconf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) }); }
     catch (e) {}
     setTimeout(loadApi, 1200);
   };
@@ -6190,7 +6381,7 @@ document.getElementById('apiRow').onclick = () => {
   try {
     const st = await (await fetch('api/authmode', { cache: 'no-store' })).json();
     const el = document.getElementById('apiVal');
-    if (el) el.textContent = st.mode === 'api' ? '正走着' : '备用 · 没启用';
+    if (el) el.textContent = window.DWELL_DEMO ? '先连接 Mac' : st.mode === 'api' ? '正走着' : '备用 · 没启用';
   } catch (e) {}
 })();
 
@@ -6614,7 +6805,7 @@ let suppressAddClick = false;
 let addDragFrame = 0;
 
 function addCollapsedHeight() {
-  return Math.min(Math.round(window.innerHeight * .52), 620);
+  return Math.min(Math.round(window.innerHeight * .47), 560);
 }
 function addExpandedHeight() {
   return Math.max(addCollapsedHeight() + 1, Math.round(window.innerHeight - 48));
@@ -6651,6 +6842,7 @@ function dismissAddSheet() {
 function openAddSheet() {
   resetAddSheetState();
   addSheetEl.classList.add('open');
+  refreshAddOptions();
 }
 function settleAddSheet(expanded) {
   if (addDragFrame) { cancelAnimationFrame(addDragFrame); addDragFrame = 0; }
@@ -6757,24 +6949,94 @@ document.getElementById('fileBtn').onclick = () => fFile.click();
 document.getElementById('webSearchRow').onclick = () => {
   const on = document.getElementById('webSearchSwitch').classList.toggle('on');
   document.getElementById('webSearchRow').setAttribute('aria-pressed', String(on));
+  try { localStorage.setItem('dwellWebSearch', on ? '1' : '0'); } catch {}
 };
+try {
+  const savedWebSearch = localStorage.getItem('dwellWebSearch');
+  if (savedWebSearch === '0') {
+    document.getElementById('webSearchSwitch').classList.remove('on');
+    document.getElementById('webSearchRow').setAttribute('aria-pressed', 'false');
+  }
+} catch {}
+const addDetailSheet = document.getElementById('addDetailSheet');
+const addDetailTitle = document.getElementById('addDetailTitle');
+const addDetailBody = document.getElementById('addDetailBody');
+function addOptionRow(icon, title, value, checked, onclick) {
+  const row = document.createElement('button');
+  row.className = 'grow' + (onclick ? '' : ' static');
+  row.appendChild(icEl(icon, 22));
+  row.append(title);
+  const val = document.createElement('span');
+  val.className = 'val'; val.textContent = value || '';
+  row.appendChild(val);
+  if (checked) row.appendChild(icEl('check', 18));
+  if (onclick) row.onclick = onclick;
+  return row;
+}
+function showAddDetail(title) {
+  addDetailTitle.textContent = title;
+  addDetailBody.innerHTML = '<div class="gnote">正在读取…</div>';
+  addDetailSheet.classList.add('open');
+}
+async function refreshAddOptions() {
+  const projectSub = document.querySelector('#projectRow .addsub');
+  const toolSub = document.querySelector('#toolAccessRow .addsub');
+  await Promise.all([
+    fetch('api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      const current = (d.items || []).find(item => item.current) || d.items?.[0];
+      projectSub.textContent = current?.name || 'None';
+    }).catch(() => { projectSub.textContent = 'Unavailable'; }),
+    fetch('api/tool-access', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      toolSub.textContent = d.mode || 'Auto';
+    }).catch(() => { toolSub.textContent = 'Unavailable'; }),
+  ]);
+}
 document.getElementById('projectRow').onclick = async () => {
+  showAddDetail('Add to project');
   try {
     const d = await (await fetch('api/projects', { cache: 'no-store' })).json();
-    note(d.items && d.items.length ? '（项目：' + d.items.map(x => x.name).join('、') + '）' : '（还没有项目；Claude Code 先在当前工作区工作）');
-  } catch { note('（项目拿不到，再试一次）', 'err'); }
+    addDetailBody.innerHTML = '';
+    const group = document.createElement('div'); group.className = 'group';
+    if (!(d.items || []).length) {
+      addDetailBody.innerHTML = '<div class="gnote">当前没有可选项目。连接 Mac 后，Claude Code 会在后端设置的工作区里工作。</div>';
+      return;
+    }
+    d.items.forEach(item => group.appendChild(addOptionRow('box', item.name, item.path || '', !!item.current, null)));
+    addDetailBody.appendChild(group);
+  } catch { addDetailBody.innerHTML = '<div class="gnote">项目拿不到，请检查 Mac 连接。</div>'; }
 };
 document.getElementById('toolAccessRow').onclick = async () => {
+  showAddDetail('Tool access');
   try {
     const d = await (await fetch('api/tool-access', { cache: 'no-store' })).json();
-    note('（工具权限：' + (d.mode || 'Auto') + '）');
-  } catch { note('（工具权限拿不到）', 'err'); }
+    addDetailBody.innerHTML = '';
+    const group = document.createElement('div'); group.className = 'group';
+    const descriptions = { Auto: '按后端许可执行', Ask: '需要时询问', Plan: '只做计划和只读检查' };
+    (d.items || ['Auto', 'Ask', 'Plan']).forEach(mode => {
+      group.appendChild(addOptionRow('briefcase', mode, descriptions[mode] || '', mode === d.mode, async () => {
+        const response = await fetch('api/tool-access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
+        const saved = await response.json();
+        if (!response.ok || !saved.ok) return note('（工具权限没改成）', 'err');
+        document.querySelector('#toolAccessRow .addsub').textContent = saved.mode;
+        addDetailSheet.classList.remove('open');
+      }));
+    });
+    addDetailBody.appendChild(group);
+  } catch { addDetailBody.innerHTML = '<div class="gnote">工具权限拿不到，请检查 Mac 连接。</div>'; }
 };
 document.getElementById('connectorsRow').onclick = async () => {
+  showAddDetail('Connectors');
   try {
     const d = await (await fetch('api/connectors', { cache: 'no-store' })).json();
-    note(d.items && d.items.length ? '（连接器：' + d.items.map(x => x.name).join('、') + '）' : '（还没有连接器）');
-  } catch { note('（连接器拿不到）', 'err'); }
+    addDetailBody.innerHTML = '';
+    if (!(d.items || []).length) {
+      addDetailBody.innerHTML = '<div class="gnote">还没有连接器。项目里的 .mcp.json 接好后会显示在这里。</div>';
+      return;
+    }
+    const group = document.createElement('div'); group.className = 'group';
+    d.items.forEach(item => group.appendChild(addOptionRow('connectors', item.name, item.status || '', false, null)));
+    addDetailBody.appendChild(group);
+  } catch { addDetailBody.innerHTML = '<div class="gnote">连接器拿不到，请检查 Mac 连接。</div>'; }
 };
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|log|ya?ml|xml|html?|css|js|ts|py|sh|ini|conf|toml|sql|srt|vtt)$/i;
@@ -6802,18 +7064,29 @@ async function takeFiles(list, isImage) {
 
 async function bigUpload(f) {
   const CHUNK = 4 * 1024 * 1024;
+  const MAX_FILE = 128 * 1024 * 1024;
+  if (f.size > MAX_FILE) {
+    note('（' + f.name + ' 超过 128 MB，先压缩或拆小再传）', 'err');
+    return;
+  }
   const total = Math.max(1, Math.ceil(f.size / CHUNK));
+  const uid = (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
   const tip = note('（在搬 ' + f.name + '…0%）', '', true);
   try {
+    let uploaded = null;
     for (let i = 0; i < total; i++) {
       const part = f.slice(i * CHUNK, (i + 1) * CHUNK);
       const q = 'api/upload?name=' + encodeURIComponent(f.name)
-        + '&idx=' + i + '&done=' + (i === total - 1 ? 1 : 0);
+        + '&uid=' + encodeURIComponent(uid) + '&idx=' + i + '&done=' + (i === total - 1 ? 1 : 0);
       const r = await fetch(q, { method: 'POST', body: part });
       if (!r.ok) throw new Error('第 ' + (i + 1) + ' 块没过去');
+      const d = await r.json();
+      if (i === total - 1) uploaded = d;
       if (tip) tip.textContent = '（在搬 ' + f.name + '…' + Math.round((i + 1) / total * 100) + '%）';
     }
-    if (tip) { tip.textContent = '（' + f.name + ' 搬到家里了，我这就去看）';
+    if (!uploaded?.path) throw new Error(window.DWELL_DEMO ? '先连接 Mac 才能上传大文件' : '后端没有返回文件地址');
+    attachments.push({ kind: 'file', name: f.name, path: uploaded.path, size: f.size });
+    if (tip) { tip.textContent = '（' + f.name + ' 已加入这条消息）';
       setTimeout(() => tip.close(), 4200); }
   } catch (e) {
     if (tip) { tip.textContent = '（' + f.name + ' 没搬动，' + (e.message || '不知道为什么') + '）';

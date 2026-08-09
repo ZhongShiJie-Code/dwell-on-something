@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node server.mjs",
     "check": "node --check server.mjs",
+    "smoke": "node smoke.mjs",
     "news": "node news_daily.mjs"
   },
   "dependencies": {

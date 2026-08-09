@@ -1,10 +1,12 @@
-const CACHE_NAME = 'dwell-shell-v1';
+const CACHE_NAME = 'dwell-shell-v0.4.1';
 const CORE_FILES = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon.svg',
-  './icons/maskable.svg'
+  './icons/maskable.svg',
+  './fonts/InterVariable.woff2',
+  './fonts/CormorantGaramond[wght].ttf'
 ];
 
 self.addEventListener('install', (event) => {
