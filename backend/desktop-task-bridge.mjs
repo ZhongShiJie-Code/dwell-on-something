@@ -188,7 +188,7 @@ async function callHostTaskTool(name, args, timeoutMs) {
       if (!settled) finish(new Error(stderr.trim() || `host_tasks_mcp_exited_${code}`));
     });
     timer = setTimeout(() => finish(new Error('host_task_timeout')), Math.min(Math.max(timeoutMs + 15_000, 30_000), 915_000));
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'dwell', version: '0.4.6' } } })}\n`);
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'dwell', version: '0.4.7' } } })}\n`);
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} })}\n`);
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } })}\n`);
   });

@@ -102,6 +102,8 @@
     --serif: DwellSerif, SerifNum, "Songti SC", "Noto Serif SC", Georgia, serif;
     --glass: color-mix(in srgb, var(--card) 70%, transparent);  /* 悬浮层玻璃度（顶栏/菜单——内容条 8/3 改用 --panel 实色） */
     --pink: #E5A192;          
+    --tap: 44px;
+    --icon: 21px;
   }
   @media (prefers-color-scheme: dark) {
 html:not([data-theme="light"]) {
@@ -265,7 +267,7 @@ html[data-theme="dark"] .glass,
     display: flex; align-items: center; justify-content: center;
     flex: none; color: var(--text);
   }
-  .iconbtn .ic { width: 28px; height: 28px; }
+  .iconbtn .ic { width: var(--icon); height: var(--icon); }
   
   header .iconbtn.glass {
     background: transparent;
@@ -280,7 +282,7 @@ html[data-theme="dark"] .glass,
     box-shadow: 0 2px 8px rgba(0,0,0,.12);
   }
   #newChatBtn .ic { width: 18px; height: 18px; }
-  #dotsBtn .ic { width: 23px; height: 23px; transform: rotate(90deg); }
+  #dotsBtn .ic { width: 18px; height: 18px; transform: rotate(90deg); }
   #newChatBtn:active, #dotsBtn:active, #menuBtn:active { transform: scale(.94); }
   .title { display: none; }
   .title h1 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
@@ -310,7 +312,7 @@ html[data-theme="dark"] .glass,
   }
   #welcome h2 {
     margin: 14px 0 0; color: var(--text); font-family: var(--serif);
-    font-size: clamp(28px, 7.2vw, 35px); font-weight: 500; letter-spacing: -.045em;
+    font-size: clamp(26px, 6.6vw, 32px); font-weight: 500; letter-spacing: -.04em;
     line-height: 1.12; text-align: center; text-wrap: balance;
   }
   /* 顶上那颗「看更早的」——老账都在，按一下捞 400 行 */
@@ -385,7 +387,7 @@ html[data-theme="dark"] .glass,
   .msg-sources:active { background: var(--panel); transform: scale(.985); }
   .msg-actions { display: flex; align-items: center; gap: 3px; color: var(--dim); }
   .msg-action { width: 38px; height: 38px; padding: 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; display: inline-flex; align-items: center; justify-content: center; }
-  .msg-action .ic { width: 20px; height: 20px; }
+  .msg-action .ic { width: 18px; height: 18px; }
   .msg-action:active, .msg-action.on { background: var(--panel); color: var(--text); }
   .msg-action.done { color: var(--green); }
   .msg-action[disabled] { opacity: .45; }
@@ -501,7 +503,7 @@ html[data-theme="dark"] .composer {
   }
   #box {
     width: 100%; border: 0; outline: 0; resize: none; background: transparent;
-    color: var(--text); font: inherit; font-size: 19px; line-height: 1.35;
+    color: var(--text); font: inherit; font-size: 17px; line-height: 1.4;
     max-height: 160px; min-height: 34px; padding: 1px 3px 12px;
   }
   #box::placeholder { color: #77746d; opacity: .92; }
@@ -518,7 +520,7 @@ html[data-theme="dark"] .composer {
   #micBtn { background: #f0efe9; }
   #micBtn.listening { background: var(--accent); color: #fff; }
   #micBtn:active, #plusBtn:active { transform: scale(.96); }
-  #modelPill { min-width: 0; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 13px; font-size: 14px; }
+  #modelPill { min-width: 0; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 12px; font-size: 13.5px; }
   .ctlrow .gap { flex: 1; }
   #send {
     flex: none; width: 38px; height: 38px; border-radius: 50%;
@@ -528,6 +530,8 @@ html[data-theme="dark"] .composer {
   }
   #send:active { transform: scale(.95); }
   #send .ic { width: 18px; height: 18px; }
+  #send.listening { background: var(--accent); animation: voicePulse 1.25s ease-in-out infinite; }
+  @keyframes voicePulse { 50% { transform: scale(.93); opacity: .78; } }
   #send .arrow { display: none; }
   #send.hasText { background: var(--accent); }
   #send.hasText .voice { display: none; }
@@ -600,17 +604,25 @@ html[data-theme="dark"] .composer {
     box-shadow: 4px 0 24px rgba(0,0,0,.12);
     touch-action: pan-y; will-change: auto;
   }
+  body.motion-active #drawer,
+  body.motion-active .sheet,
+  body.motion-active .composer,
+  body.motion-active .glass {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
   #drawerWrap.show #drawer { transform: none; }
   .brand {
-    font-family: var(--serif); font-size: 30px; font-weight: 700;
+    font-family: var(--serif); font-size: 27px; font-weight: 700;
     padding: 6px 24px 18px; letter-spacing: .01em;
   }
   .nav { flex: 1; overflow-y: auto; padding: 0 12px; }
   .nav .item {
     display: flex; align-items: center; gap: 16px; width: 100%;
-    padding: 12px 16px; border-radius: 12px; font-size: 17px; text-align: left;
+    padding: 11px 16px; border-radius: 12px; font-size: 15px; text-align: left;
   }
-  .nav .item .ic { width: 21px; height: 21px; }
+  .nav .item .ic { width: 18px; height: 18px; }
   .nav .item.on { background: var(--panel); }
   .nav .item.dis { color: var(--dim); }
   .nav .item.dis .tag {
@@ -721,24 +733,24 @@ html[data-theme="dark"] .composer {
     border-radius: 50%; touch-action: manipulation;
   }
   .sheet .head .hbtn .ic { width: 19px; height: 19px; }
-  .sheet .head .ht { flex: 1; text-align: center; font-size: 18px; font-weight: 700; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet .head .ht { flex: 1; text-align: center; font-size: 17px; font-weight: 700; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sheet .head .hspace { width: 48px; flex: none; }
   .sheet .head .hbtn:active { background: rgba(128,128,128,.12); transform: scale(.97); }
   .sheetWrap.page .head { padding-top: calc(env(safe-area-inset-top) + 8px); }
   .sheet .body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px calc(20px + env(safe-area-inset-bottom)); }
 
   #settingsSheet .sheet { height: min(760px, calc(100dvh - 16px)); max-height: calc(100dvh - 16px); }
-  #settingsSheet .group .grow { padding: 17px 18px; font-size: 17px; }
+  #settingsSheet .group .grow { padding: 15px 18px; font-size: 15px; }
 
   .group-label { font-size: 14.5px; color: var(--dim); padding: 14px 4px 8px; }
   .group { background: var(--panel); border-radius: 18px; overflow: hidden; }
   .group .grow {
     display: flex; align-items: center; gap: 13px; width: 100%;
-    padding: 15px 18px; font-size: 16px; text-align: left;
+    padding: 15px 18px; font-size: 15px; text-align: left;
   }
   .group .grow + .grow { border-top: 1px solid var(--line); }
-  .group .grow .ic { width: 20px; height: 20px; color: var(--text); }
-  .group .grow .val { margin-left: auto; color: var(--dim); font-size: 15px; }
+  .group .grow .ic { width: 18px; height: 18px; color: var(--text); }
+  .group .grow .val { margin-left: auto; color: var(--dim); font-size: 14px; }
   .group .grow .chev { color: var(--dim); font-size: 14px; }
   .group .grow .val + .chev { margin-left: 6px; }
   .group .grow:not(.static):active { background: rgba(0,0,0,.04); }
@@ -795,7 +807,7 @@ html[data-theme="dark"] .composer {
   /* 选模型 / Effort / More models */
   .mrow { display: block; width: 100%; text-align: left; padding: 15px 18px; }
   .mrow + .mrow { border-top: 1px solid var(--line); }
-  .mrow .mn { font-size: 16.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .mrow .mn { font-size: 15.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .mrow .mn .ck { margin-left: auto; color: var(--accent); width: 18px; height: 18px; }
   .mrow .mn .badge {
     font-size: 11.5px; font-weight: 500; color: var(--dim);
@@ -1581,6 +1593,9 @@ html[data-theme="dark"] .note { color: #2f2b26; box-shadow: 0 3px 12px rgba(0,0,
   .task-run-name { min-width: 0; flex: 1; font-size: 15px; font-weight: 600; }
   .task-run-time { color: var(--dim); font-size: 12px; white-space: nowrap; }
   .task-run-copy { margin-top: 4px; color: var(--dim); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #tasksSheet .sheet { touch-action: pan-y; overflow: hidden; }
+  #tasksBody { will-change: auto; }
+  #tasksSheet.task-swiping #tasksBody { will-change: transform; }
   .run-summary { margin-top: 14px; padding: 15px; border-radius: 16px; background: var(--panel); font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
   .run-timeline { margin-top: 8px; }
   .run-step { position: relative; display: grid; grid-template-columns: 18px 1fr; gap: 11px; padding: 8px 0 13px; }
@@ -1729,8 +1744,8 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   #addSheet .grabber:active { cursor: grabbing; }
   #addSheet .head { padding: 8px 12px 10px; touch-action: manipulation; }
   #addSheet .head .hbtn { width: 48px; height: 48px; }
-  #addSheet .head .hbtn .ic { width: 22px; height: 22px; stroke-width: 1.8; }
-  #addSheet .head .ht { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  #addSheet .head .hbtn .ic { width: 19px; height: 19px; stroke-width: 1.8; }
+  #addSheet .head .ht { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
   #addSheet .body { padding: 2px 13px calc(24px + env(safe-area-inset-bottom)); overflow-y: hidden; }
   #addSheet.expanded .body { overflow-y: auto; }
   #addSheet .addgrid {
@@ -1740,18 +1755,18 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   #addSheet .addbig {
     width: 100%; height: 112px; border-radius: 18px; background: var(--card);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px;
-    font-size: 17px; line-height: 1.2; text-align: center;
+    font-size: 15px; line-height: 1.2; text-align: center;
     box-shadow: 0 1px 3px rgba(40,38,34,.035);
   }
   #addSheet .addbig:active, #addSheet .addrow:active { transform: scale(.987); }
   #addSheet .addicon, #addSheet .addrow-icon {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 48px; height: 48px; border-radius: 50%; background: var(--panel); color: var(--text);
+    width: 44px; height: 44px; border-radius: 50%; background: var(--panel); color: var(--text);
   }
-  #addSheet .addicon .ic { width: 24px; height: 24px; stroke-width: 1.7; }
+  #addSheet .addicon .ic { width: 21px; height: 21px; stroke-width: 1.7; }
   #addSheet .addrow {
     display: flex; align-items: center; gap: 14px; width: 100%; min-height: 62px;
-    background: var(--card); border-radius: 18px; padding: 7px 14px; font-size: 17px;
+    background: var(--card); border-radius: 18px; padding: 7px 14px; font-size: 15px;
     margin-top: 12px; text-align: left; box-shadow: 0 1px 3px rgba(40,38,34,.035);
   }
   #addSheet .addgroup {
@@ -1762,10 +1777,10 @@ html[data-theme="dark"] .rc { --stamp: var(--accent-soft); --rc-foot-ink: rgba(2
   #addSheet .addgroup .addrow { min-height: 68px; }
   #addSheet .addgroup .addrow + .addrow { border-top: 1px solid var(--line); }
   #addSheet .addrow-icon { width: 40px; height: 40px; flex: none; }
-  #addSheet .addrow-icon .ic { width: 24px; height: 24px; stroke-width: 1.65; }
+  #addSheet .addrow-icon .ic { width: 21px; height: 21px; stroke-width: 1.65; }
   #addSheet .addrow-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  #addSheet .addtitle { font-size: 18px; line-height: 1.25; }
-  #addSheet .addsub { margin-top: 2px; color: var(--dim); font-size: 16px; line-height: 1.25; }
+  #addSheet .addtitle { font-size: 15.5px; line-height: 1.25; }
+  #addSheet .addsub { margin-top: 2px; color: var(--dim); font-size: 13.5px; line-height: 1.25; }
   #addSheet .addchev { width: 18px; height: 18px; margin-left: auto; color: var(--dim); flex: none; stroke-width: 1.7; }
   #addSheet .add-switch {
     position: relative; width: 48px; height: 30px; flex: none; margin-left: auto;
@@ -1832,26 +1847,26 @@ html[data-theme="dark"] .menuCard {
   }
   #chatsSheet .head .ht { display: none; }
   #chatsSheet .head .hbtn { width: 44px; height: 44px; }
-  #chatsSheet .head .hbtn .ic { width: 27px; height: 27px; }
+  #chatsSheet .head .hbtn .ic { width: 21px; height: 21px; }
   #chatHeadActions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
-  #chatHeadActions .hbtn .ic { width: 24px; height: 24px; stroke-width: 1.8; }
+  #chatHeadActions .hbtn .ic { width: 20px; height: 20px; stroke-width: 1.8; }
   #chatsContent {
     padding: 4px 20px calc(112px + env(safe-area-inset-bottom));
     overflow-y: auto; overscroll-behavior: contain;
   }
   .chats-title {
-    margin: 0 4px 24px; font-family: var(--serif); font-size: 48px; line-height: 1;
+    margin: 0 4px 22px; font-family: var(--serif); font-size: 42px; line-height: 1;
     font-weight: 600; letter-spacing: -.045em;
   }
   .chat-search {
-    height: 62px; border: 1.5px solid color-mix(in srgb, var(--dim) 58%, transparent);
+    height: 54px; border: 1.5px solid color-mix(in srgb, var(--dim) 58%, transparent);
     border-radius: 17px; display: flex; align-items: center; gap: 13px;
     padding: 0 17px; margin-bottom: 19px; color: var(--dim); background: var(--bg);
   }
-  .chat-search .ic { width: 27px; height: 27px; stroke-width: 1.7; }
+  .chat-search .ic { width: 22px; height: 22px; stroke-width: 1.7; }
   #chatSearch {
     min-width: 0; flex: 1; border: 0; outline: 0; background: transparent;
-    color: var(--text); font: inherit; font-size: 18px;
+    color: var(--text); font: inherit; font-size: 16px;
   }
   #chatSearch::placeholder { color: var(--dim); opacity: .88; }
   #chatOffline {
@@ -1860,7 +1875,7 @@ html[data-theme="dark"] .menuCard {
   #chatOffline.on { display: block; }
   #chatsBody { display: flex; flex-direction: column; }
   .chat-row {
-    width: 100%; min-height: 91px; display: flex; align-items: flex-start; gap: 13px;
+    width: 100%; min-height: 78px; display: flex; align-items: flex-start; gap: 13px;
     padding: 13px 16px 12px; border-radius: 15px; text-align: left;
     background: transparent; color: var(--text);
   }
@@ -1876,11 +1891,11 @@ html[data-theme="dark"] .menuCard {
   .chat-row-copy { flex: 1; min-width: 0; }
   .chat-row-title {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-size: 19px; line-height: 1.35; font-weight: 470; letter-spacing: -.015em;
+    font-size: 17px; line-height: 1.35; font-weight: 470; letter-spacing: -.015em;
   }
   .chat-row-meta {
     display: flex; align-items: center; gap: 8px; margin-top: 3px;
-    color: var(--dim); font-size: 15px; line-height: 1.35;
+    color: var(--dim); font-size: 13.5px; line-height: 1.35;
   }
   .chat-row-badge {
     padding: 1px 7px; border-radius: 999px; background: var(--panel); font-size: 11.5px;
@@ -1907,7 +1922,7 @@ html[data-theme="dark"] .menuCard {
   #newSession {
     position: absolute; right: 18px; bottom: calc(20px + env(safe-area-inset-bottom));
     background: #2b2a27; color: #faf9f5; border-radius: 999px;
-    min-height: 58px; padding: 13px 23px; font-size: 17px; font-weight: 650;
+    min-height: 52px; padding: 11px 20px; font-size: 15px; font-weight: 650;
     display: flex; align-items: center; gap: 7px;
     box-shadow: 0 8px 24px rgba(0,0,0,.18);
   }
@@ -2063,7 +2078,9 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
       <div class="group-label">家</div>
       <div class="group">
         <button class="grow" id="pushRow"><span class="ic" data-i="bell"></span>手机通知<span class="sw wait" id="pushSw"></span></button>
+        <button class="grow" id="pushDiagRow"><span class="ic" data-i="activity"></span>通知诊断<span class="val" id="pushDiagVal">检查</span><span class="chev">›</span></button>
         <button class="grow static" id="aliveRow"><span class="ic" data-i="activity"></span>后端在跑吗<span class="val" id="aliveVal">看看…</span></button>
+        <button class="grow" id="appDiagRow"><span class="ic" data-i="bolt"></span>运行诊断<span class="val" id="appDiagVal">最近状态</span><span class="chev">›</span></button>
         <button class="grow" id="wakeRow"><span class="ic" data-i="alarm"></span>夜里让他自己醒<span class="sw wait" id="wakeSw"></span></button>
         <button class="grow" id="rewakeRow"><span class="ic" data-i="refresh"></span>叫他重新醒一次<span class="val" id="rewakeVal">他要是卡住了就按</span></button>
         <button class="grow" id="themeRow"><span class="ic" data-i="moon"></span>夜间模式<span class="sw wait" id="themeSw"></span></button>
@@ -2534,7 +2551,7 @@ html[data-theme="dark"] #newSession { background: #f5f4ef; color: #262624; }
         await new Promise(resolve => setTimeout(resolve, 700));
         fresh = demoEvents.filter(event => event._cursor > since).map(({ _cursor, ...event }) => event);
       }
-      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.6', events: fresh });
+      return R({ ok: true, next: demoCursor, ver: 'demo-0.4.7', events: fresh });
     }
     if (p === 'api/send' && method === 'POST') {
       const data = parseBody(init);
@@ -2819,7 +2836,7 @@ function syncWelcome() {
   welcome.classList.toggle('off', hasConversation);
   composer.classList.toggle('empty', !hasConversation);
 }
-new MutationObserver(syncWelcome).observe(log, { childList: true, subtree: true });
+new MutationObserver(syncWelcome).observe(log, { childList: true });
 syncWelcome();
 
 /* ---------- 小螃蟹 ---------- */
@@ -2894,14 +2911,28 @@ petEl.addEventListener('pointerup', () => {
 });
 
 let guEl = null;
+let renderTarget = log;
+let renderBatchDepth = 0;
 
 /* ---------- 基础排版 ---------- */
-function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 90; }
-function scroll(force) { if (force || atBottom()) log.scrollTop = log.scrollHeight; }
+function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 120; }
+let scrollFrame = 0;
+let forceNextScroll = false;
+function scroll(force) {
+  if (renderBatchDepth) return;
+  forceNextScroll = forceNextScroll || !!force;
+  if (scrollFrame) return;
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = 0;
+    const shouldScroll = forceNextScroll || atBottom();
+    forceNextScroll = false;
+    if (shouldScroll) log.scrollTop = log.scrollHeight;
+  });
+}
 function row(cls) {
   const d = document.createElement('div');
   d.className = 'row ' + (cls || '');
-  log.appendChild(d);
+  renderTarget.appendChild(d);
   return d;
 }
 function messageClock(value) {
@@ -3073,6 +3104,25 @@ function shareMessage(text, sources) {
   } catch {}
   copyMessage(payload, document.createElement('button'));
 }
+function speechText(raw) {
+  return String(raw || '')
+    .replace(/```[\s\S]*?```/g, '。代码内容已省略。')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/<https?:\/\/[^>]+>/gi, '链接')
+    .replace(/https?:\/\/\S+/gi, '链接')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/^\s*>+\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '。')
+    .replace(/^\s*\d+[.)、]\s+/gm, '。')
+    .replace(/\*\*|__|~~|\*/g, '')
+    .replace(/[|]{2,}/g, '，')
+    .replace(/\s*\n+\s*/g, '。')
+    .replace(/。{2,}/g, '。')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 function speakMessage(text, key, button) {
   if (speechActiveKey === key) {
     if (window.Android?.stopSpeaking) window.Android.stopSpeaking();
@@ -3088,10 +3138,13 @@ function speakMessage(text, key, button) {
   speechActiveKey = key;
   setSpeechButtons(key, true);
   try {
-    if (window.Android?.speak) { window.Android.speak(text, key); return; }
+    const spoken = speechText(text);
+    if (!spoken) throw new Error('speech empty');
+    if (window.Android?.speak) { window.Android.speak(spoken, key); return; }
     if (!window.speechSynthesis) throw new Error('speech unavailable');
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(spoken);
     utterance.lang = 'zh-CN';
+    utterance.rate = .95;
     utterance.onend = () => { speechActiveKey = ''; setSpeechButtons(key, false); };
     window.speechSynthesis.speak(utterance);
   } catch { speechActiveKey = ''; setSpeechButtons(key, false); note('（当前设备没有可用的朗读引擎）', 'err'); }
@@ -3329,24 +3382,28 @@ const STREAM_FILE_TAIL = /(?:https?:\/\/[^\s"'<>]*)?\/?a(?:p(?:i(?:\/(?:f(?:i(?:
    结尾那个还没写完的链接一律藏住，定稿再变卡片。 */
 const STREAM_SONG_TAIL = /https?:\/\/(?:[a-z0-9.]*music[a-z0-9.]*|[a-z]{1,6})(?:\/[^\s]*)?$/i;
 
-/* 流式重绘：攒着原文，每帧重画一次（rAF 合并，别一个 token 排一次版） */
+/* 流式重绘：攒着原文，约 50ms 合并一次。手机不需要为每个 token 重排整段 Markdown。 */
 function paintStream(el) {
   if (el._final || el._painting) return;
   el._painting = true;
-  requestAnimationFrame(() => {
-    el._painting = false;
-    // 定稿的那份是权威。刷新网页时几百条事件在一个循环里跑完，rAF 排在最后面才轮到——
-    // 不拦这一下，它会把已经画好的卡片、加粗、摘干净的孤尾全冲回流式那版。
-    if (el._final || !el.isConnected) return;
-    el.textContent = '';
-    // 流式时也压着孤尾：真有下文的话，下一帧就补齐了，只差一帧；
-    const t = (el._raw || '').replace(ORPHAN_TAIL, '')
-      .replace(STREAM_FILE_TAIL, '').replace(STREAM_SONG_TAIL, '');
-    appendWithImages(el, t, true);
-    const c = document.createElement('span');
-    c.className = 'caret';
-    el.appendChild(c);
-  });
+  const elapsed = performance.now() - Number(el._paintedAt || 0);
+  const delay = Math.max(0, 48 - elapsed);
+  clearTimeout(el._paintTimer);
+  el._paintTimer = setTimeout(() => requestAnimationFrame(() => {
+      el._painting = false;
+      el._paintedAt = performance.now();
+      // 定稿的那份是权威。刷新网页时几百条事件在一个循环里跑完，rAF 排在最后面才轮到——
+      // 不拦这一下，它会把已经画好的卡片、加粗、摘干净的孤尾全冲回流式那版。
+      if (el._final || !el.isConnected) return;
+      el.textContent = '';
+      const t = (el._raw || '').replace(ORPHAN_TAIL, '')
+        .replace(STREAM_FILE_TAIL, '').replace(STREAM_SONG_TAIL, '');
+      appendWithImages(el, t, true);
+      const c = document.createElement('span');
+      c.className = 'caret';
+      el.appendChild(c);
+      scroll();
+    }), delay);
 }
 
 const SONG_RE = /https?:\/\/music\.163\.com\/(?:#\/)?song\?id=(\d+)/g;
@@ -3799,7 +3856,11 @@ toolBack.onclick = () => {
 };
 
 function renderSaid(msgs) {
-  for (const m of msgs) {
+  const previousTarget = renderTarget;
+  const fragment = document.createDocumentFragment();
+  renderTarget = fragment;
+  renderBatchDepth += 1;
+  try { for (const m of msgs) {
     if (m.kind === 'me') { endThink(); addMe(m.text, m.at, m.seq); }
     else if (m.kind === 'gu') {
       const meta = { thought: turnThink?.text || '', toolIds: curGroup?.ids ? [...curGroup.ids] : [] };
@@ -3825,8 +3886,12 @@ function renderSaid(msgs) {
       addToolUse({ name: m.text, input, id: tid });
       markToolDone(tid, false, '');   // 过去的活早干完了，别让它在那儿转圈
     }
+  } } finally {
+    closeGroup(); endThink();
+    renderTarget = previousTarget;
+    renderBatchDepth -= 1;
+    previousTarget.appendChild(fragment);
   }
-  closeGroup(); endThink();
 }
 
 function resetConversationView(options = {}) {
@@ -3843,12 +3908,49 @@ function resetConversationView(options = {}) {
   syncWelcome();
 }
 
+const INITIAL_MESSAGE_LIMIT = 80;
+const OLDER_MESSAGE_LIMIT = 80;
+const chatMessageCache = new Map();
+let activeChatKey = 'current';
+let switchInProgress = false;
+
+function rememberMessages(key, msgs, more) {
+  if (!key || !Array.isArray(msgs)) return;
+  chatMessageCache.set(key, { msgs: msgs.slice(-INITIAL_MESSAGE_LIMIT), more: !!more, at: Date.now() });
+  if (chatMessageCache.size > 12) chatMessageCache.delete(chatMessageCache.keys().next().value);
+}
+
+function showCachedConversation(key) {
+  const cached = chatMessageCache.get(key);
+  if (!cached) return false;
+  resetConversationView({ preserveBusy: false });
+  renderSaid(cached.msgs);
+  if (cached.msgs.length) earliestSeq = cached.msgs[0].seq;
+  ensureOlderBtn(cached.more);
+  scroll(true);
+  return true;
+}
+
 async function loadSaid(options = {}) {
   try {
-    const r = await fetch('api/messages?limit=400', { cache: 'no-store' });
+    const r = await fetch('api/messages?limit=' + INITIAL_MESSAGE_LIMIT, { cache: 'no-store' });
     if (!r.ok) return 0;
     const d = await r.json();
     const msgs = d.msgs || [];
+    const previous = chatMessageCache.get(activeChatKey);
+    const unchanged = !!options.keepIfUnchanged && !!previous
+      && previous.more === !!d.more
+      && previous.msgs.length === msgs.length
+      && previous.msgs.every((message, index) => {
+        const next = msgs[index];
+        return next && String(message.seq) === String(next.seq) && message.kind === next.kind && message.text === next.text;
+      });
+    rememberMessages(activeChatKey, msgs, d.more);
+    if (unchanged) {
+      if (msgs.length) earliestSeq = msgs[0].seq;
+      ensureOlderBtn(!!d.more);
+      return d.upto || 0;
+    }
     if (options.reset) resetConversationView({ preserveBusy: !!options.preserveBusy });
     renderSaid(msgs);
     healEmptyGu();
@@ -3879,7 +3981,7 @@ async function loadOlder() {
   loadingOlder = true;
   olderBtn.textContent = '正在翻老账…';
   try {
-    const r = await fetch('api/messages?limit=400&before=' + earliestSeq, { cache: 'no-store' });
+    const r = await fetch('api/messages?limit=' + OLDER_MESSAGE_LIMIT + '&before=' + earliestSeq, { cache: 'no-store' });
     if (!r.ok) return;
     const d = await r.json();
     const msgs = d.msgs || [];
@@ -3974,7 +4076,7 @@ async function poll(token = pollToken) {
 
 async function restartEventStream(options = {}) {
   const token = await primeEventStream();
-  if (options.loadHistory) await loadSaid({ reset: true, preserveBusy: !!options.preserveBusy });
+  if (options.loadHistory) await loadSaid({ reset: true, preserveBusy: !!options.preserveBusy, keepIfUnchanged: !!options.keepHistoryIfUnchanged });
   if (token === pollToken) poll(token);
 }
 
@@ -4002,10 +4104,24 @@ document.addEventListener('visibilitychange', async () => {
   if (Date.now() - lastEventAt < 30000) return;
   if (armedFresh) return;
   try {
-    await restartEventStream({ loadHistory: true, preserveBusy: guBusy });
+    await restartEventStream();
+    await syncRecentMessages();
     lastEventAt = Date.now();
   } catch (e) {}
 });
+
+async function syncRecentMessages() {
+  try {
+    const response = await fetch('api/messages?limit=40', { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = await response.json();
+    const existing = new Set(Array.from(log.querySelectorAll('[data-message-seq]')).map(node => node.dataset.messageSeq));
+    const missing = (data.msgs || []).filter(message => !existing.has(String(message.seq)));
+    if (missing.length) renderSaid(missing);
+    rememberMessages(activeChatKey, data.msgs || [], data.more);
+    scroll();
+  } catch {}
+}
 
 function calDayWatch() {
   if (calDay && calDay !== todayStr() && sheets.cal && sheets.cal.classList.contains('open')) {
@@ -4021,7 +4137,11 @@ function handle(d) {
   lastEventAt = Date.now();
   if (d.type === 'echo') { if (armedFresh) setArmed(false); addMe(d.text, d.at, d.seq); petSet('thinking'); return; }
   if (d.type === 'system' && d.subtype === 'newchat') { setArmed(false); resetConversationView({ preserveBusy: true }); return; }
-  if (d.type === 'system' && d.subtype === 'switched') { setArmed(false); resetConversationView({ preserveBusy: true }); return; }
+  if (d.type === 'system' && d.subtype === 'switched') {
+    setArmed(false);
+    if (!switchInProgress) resetConversationView({ preserveBusy: true });
+    return;
+  }
   if (d.type === 'system' && d.subtype === 'regenerate') {
     setBusy(true);
     loadSaid({ reset: true, preserveBusy: true });
@@ -4062,6 +4182,8 @@ function handle(d) {
         closeThink();
       } else if (p.type === 'text' && p.text) {
         const el = ensureGu(d.dwell_at || Date.now(), d.dwell_message_id);
+        clearTimeout(el._paintTimer);
+        el._painting = false;
         el.querySelector('.caret')?.remove();
         // 说完了的这份是权威，**无条件盖掉流式攒的那份**。
         // 同一条消息里多段文本就接着写，别把前一段冲掉。
@@ -4132,9 +4254,14 @@ function handle(d) {
     if (!d.is_error && d.result && document.visibilityState !== 'visible' && window.Android?.showNotification) {
       try { window.Android.showNotification('dwell', String(d.result).slice(0, 240), String(notificationId)); } catch {}
     }
+    if (voiceConversationAwaiting) {
+      voiceConversationAwaiting = false;
+      if (!d.is_error && d.result) {
+        const voiceKey = 'voice-' + (notificationId || Date.now());
+        setTimeout(() => speakMessage(String(d.result), voiceKey), 160);
+      }
+    }
     petSet('happy', 4000);
-    document.querySelectorAll('.gu').forEach(trimOrphanTail);   // 摘掉被打断的半个字
-    renderAllRich();
     if (d.is_error) note('（出错了：' + (d.result || '不知道为什么') + '）', 'err');
     scroll();
     return;
@@ -4143,20 +4270,21 @@ function handle(d) {
   if (d.type === 'stderr') { note(d.text, 'err'); return; }
   if (d.type === 'system' && d.subtype === 'init') {
     // 真跑着的模型，它自己报的——胶囊上显示的永远是这个，不编
-    if (d.model) setModelPill(d.model);
+    if (d.model) { runtimeModel = d.model; setModelPill(d.model); }
     return;
   }
   if (d.type === 'system' && d.subtype === 'stopped') {
     guEl?.querySelector('.caret')?.remove();
     guEl = null; endThink(); closeGroup();
     setBusy(false); petSet('calm');
+    voiceConversationAwaiting = false;
     note('（我停下了）');
     return;
   }
   if (d.type === 'system' && d.subtype === 'restart') { note(d.text); return; }
   if (d.type === 'system' && d.subtype === 'model') {
     note('（换好了，我重新醒了一遍）');
-    if (d.model) setModelPill(d.model);
+    if (d.model) { curModel = d.model; runtimeModel = ''; setModelPill(d.model); }
     if (d.effort) curEffort = d.effort;
     return;
   }
@@ -4346,7 +4474,7 @@ function refreshSend() {
   const stop = guBusy && !hasText;
   sendBtn.classList.toggle('hasText', hasText);
   sendBtn.classList.toggle('stop', stop);
-  sendBtn.title = stop ? '停下' : '发送';
+  sendBtn.title = stop ? '停下' : hasText ? '发送' : '语音对话';
   sendBtn.disabled = false;
 }
 
@@ -4358,7 +4486,7 @@ async function stopGu() {
 async function send() {
   if (guBusy && !((box.value || '').trim() || attachments.length)) return stopGu();
   const text = box.value.trim();
-  if (!text && !attachments.length) return;
+  if (!text && !attachments.length) return startVoiceInput('conversation');
   if (armedFresh) {
     try {
       const armed = await fetch('api/newchat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"arm":true}' });
@@ -4394,22 +4522,31 @@ box.addEventListener('input', () => {
 });
 let speechRecognition = null;
 let nativeSpeechListening = false;
-document.getElementById('micBtn').onclick = () => {
+let voiceInputMode = '';
+let voiceConversationAwaiting = false;
+function syncVoiceButtons(listening) {
+  const mic = document.getElementById('micBtn');
+  mic.classList.toggle('listening', !!listening && voiceInputMode === 'dictation');
+  sendBtn.classList.toggle('listening', !!listening && voiceInputMode === 'conversation');
+}
+function startVoiceInput(mode = 'dictation') {
   const mic = document.getElementById('micBtn');
   if (speechRecognition) { speechRecognition.stop(); return; }
   if (window.Android?.startVoiceInput) {
     if (nativeSpeechListening) {
       try { window.Android.stopVoiceInput?.(); } catch {}
       nativeSpeechListening = false;
-      mic.classList.remove('listening');
+      syncVoiceButtons(false);
       return;
     }
+    voiceInputMode = mode;
     nativeSpeechListening = true;
-    mic.classList.add('listening');
+    syncVoiceButtons(true);
     try { window.Android.startVoiceInput(); }
     catch {
       nativeSpeechListening = false;
-      mic.classList.remove('listening');
+      voiceInputMode = '';
+      syncVoiceButtons(false);
       note('（没能启动语音输入）', 'err');
     }
     return;
@@ -4417,47 +4554,74 @@ document.getElementById('micBtn').onclick = () => {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) { note('（这个版本的 Android WebView 没有语音识别，请用键盘输入）'); return; }
   const rec = new Recognition();
+  voiceInputMode = mode;
   rec.lang = 'zh-CN';
   rec.continuous = false;
   rec.interimResults = true;
+  rec._text = '';
   speechRecognition = rec;
-  mic.classList.add('listening');
+  syncVoiceButtons(true);
   rec.onresult = (event) => {
     let text = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) text += event.results[i][0].transcript;
+    for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
+    rec._text = text;
     box.value = text;
     box.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  rec.onerror = (event) => note('（语音识别没成功：' + (event.error || '请再试一次') + '）', 'err');
-  rec.onend = () => { speechRecognition = null; mic.classList.remove('listening'); refreshSend(); };
-  try { rec.start(); } catch { speechRecognition = null; mic.classList.remove('listening'); note('（语音识别正在使用，请稍后再试）'); }
-};
+  rec.onerror = (event) => {
+    rec._failed = true;
+    note('（语音识别没成功：' + (event.error || '请再试一次') + '）', 'err');
+  };
+  rec.onend = () => {
+    const endedMode = voiceInputMode;
+    const transcript = String(rec._text || box.value || '').trim();
+    speechRecognition = null;
+    voiceInputMode = '';
+    syncVoiceButtons(false);
+    refreshSend();
+    if (!rec._failed && endedMode === 'conversation' && transcript) {
+      voiceConversationAwaiting = true;
+      setTimeout(send, 0);
+    }
+  };
+  try { rec.start(); } catch { speechRecognition = null; voiceInputMode = ''; syncVoiceButtons(false); note('（语音识别正在使用，请稍后再试）'); }
+}
+document.getElementById('micBtn').onclick = () => startVoiceInput('dictation');
 window.onNativeSpeechReady = () => {
   nativeSpeechListening = true;
-  document.getElementById('micBtn').classList.add('listening');
+  syncVoiceButtons(true);
 };
-window.onNativeSpeechProcessing = () => document.getElementById('micBtn').classList.add('listening');
+window.onNativeSpeechProcessing = () => syncVoiceButtons(true);
 window.onNativeSpeechPartial = (text) => {
   if (!text) return;
   box.value = String(text);
   box.dispatchEvent(new Event('input', { bubbles: true }));
 };
 window.onNativeSpeechResult = (text) => {
+  const mode = voiceInputMode;
   nativeSpeechListening = false;
-  document.getElementById('micBtn').classList.remove('listening');
+  voiceInputMode = '';
+  syncVoiceButtons(false);
   if (text) {
     box.value = String(text);
     box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.focus();
+    if (mode === 'conversation') {
+      voiceConversationAwaiting = true;
+      setTimeout(send, 0);
+    } else box.focus();
   }
 };
 window.onNativeSpeechCancelled = () => {
   nativeSpeechListening = false;
-  document.getElementById('micBtn').classList.remove('listening');
+  voiceInputMode = '';
+  voiceConversationAwaiting = false;
+  syncVoiceButtons(false);
 };
 window.onNativeSpeechError = (message) => {
   nativeSpeechListening = false;
-  document.getElementById('micBtn').classList.remove('listening');
+  voiceInputMode = '';
+  voiceConversationAwaiting = false;
+  syncVoiceButtons(false);
   note('（' + (message || '语音识别没有成功') + '）', 'err');
 };
 
@@ -4544,6 +4708,9 @@ new ResizeObserver(() => {
 const drawerWrap = document.getElementById('drawerWrap');
 const drawerEl = document.getElementById('drawer');
 const drawerShade = drawerWrap.querySelector('.shade');
+let uiMotionCount = 0;
+function beginUiMotion() { uiMotionCount += 1; document.body.classList.add('motion-active'); }
+function endUiMotion() { uiMotionCount = Math.max(0, uiMotionCount - 1); if (!uiMotionCount) document.body.classList.remove('motion-active'); }
 let drawerMotion = null;
 function openDrawer() {
   if (drawerMotion) return drawerMotion.settle(true);
@@ -4568,10 +4735,11 @@ class DrawerMotion {
     this.frame = 0;
     this.animationId = 0;
     this.shown = 0;
+    this.motionActive = false;
     this.suppressClickUntil = 0;
     panel.addEventListener('pointerdown', event => this.pointerDown(event), true);
     document.addEventListener('pointerdown', event => {
-      if (!wrap.classList.contains('open') && event.pointerType !== 'touch' && event.clientX <= 24) {
+      if (!wrap.classList.contains('open') && !document.querySelector('.sheetWrap.open') && event.pointerType !== 'touch' && event.clientX <= 24) {
         this.start(event.clientX, event.clientY, event.pointerId, 'pointer', false);
       }
     }, true);
@@ -4580,7 +4748,7 @@ class DrawerMotion {
     window.addEventListener('pointercancel', event => this.pointerEnd(event), { passive: false });
     panel.addEventListener('touchstart', event => this.touchStart(event, true), { passive: true, capture: true });
     document.addEventListener('touchstart', event => {
-      if (!wrap.classList.contains('open') && event.touches.length === 1 && event.touches[0].clientX <= 24) {
+      if (!wrap.classList.contains('open') && !document.querySelector('.sheetWrap.open') && event.touches.length === 1 && event.touches[0].clientX <= 24) {
         this.touchStart(event, false);
       }
     }, { passive: true, capture: true });
@@ -4644,6 +4812,7 @@ class DrawerMotion {
       if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
       if (Math.abs(dy) > Math.abs(dx) + 6) { this.drag = null; return; }
       drag.moved = true;
+      if (!this.motionActive) { this.motionActive = true; beginUiMotion(); }
       this.wrap.classList.add('open');
       if (drag.opened) this.wrap.classList.add('show');
       this.panel.style.transition = 'none';
@@ -4715,6 +4884,7 @@ class DrawerMotion {
     this.drag = null;
     const width = this.width();
     const from = options.fromCurrent ? this.shown : (this.wrap.classList.contains('show') ? width : 0);
+    if (!this.motionActive) { this.motionActive = true; beginUiMotion(); }
     this.wrap.classList.add('open');
     this.panel.style.transition = 'none';
     this.shade.style.transition = 'none';
@@ -4737,6 +4907,7 @@ class DrawerMotion {
       this.panel.style.willChange = '';
       this.shade.style.opacity = '';
       this.shade.style.transition = '';
+      if (this.motionActive) { this.motionActive = false; endUiMotion(); }
     }, 215);
   }
 }
@@ -4784,6 +4955,7 @@ window.dwellHandleBack = () => {
   const opened = Array.from(document.querySelectorAll('.sheetWrap.open')).pop();
   if (opened) {
     if (opened === sheets.add) closeAddSheet();
+    else if (opened === sheets.tasks) return taskBackOne();
     else if (opened === sheets.chats) {
       setChatManaging(false);
       opened.classList.remove('open');
@@ -6635,7 +6807,31 @@ function codeOf(dt) {   // 票号：年月日拆开，像真小票那样
 const tasksBody = document.getElementById('tasksBody');
 let currentTaskId = '';
 let currentTaskRunId = '';
-document.getElementById('navTasks').onclick = () => { closeDrawer(); sheets.tasks.classList.add('open'); currentTaskId = ''; currentTaskRunId = ''; loadDesktopTasks(); };
+let taskRouteView = 'list';
+let taskViewSignature = '';
+function setTaskRoute(view, taskId = '', runId = '') {
+  const nextKey = [view, taskId, runId].join(':');
+  const currentKey = [taskRouteView, currentTaskId, currentTaskRunId].join(':');
+  if (nextKey !== currentKey) taskViewSignature = '';
+  taskRouteView = view;
+  currentTaskId = taskId;
+  currentTaskRunId = runId;
+}
+function closeTasksPage() {
+  clearTimeout(desktopTaskPoll);
+  setTaskRoute('list');
+  sheets.tasks.classList.remove('open');
+  tasksBody.style.transform = '';
+  tasksBody.style.transition = '';
+}
+function taskBackOne() {
+  clearTimeout(desktopTaskPoll);
+  if (taskRouteView === 'run' && currentTaskId) { openTaskDetail(currentTaskId); return true; }
+  if (taskRouteView === 'detail') { loadDesktopTasks(); return true; }
+  if (sheets.tasks.classList.contains('open')) { closeTasksPage(); return true; }
+  return false;
+}
+document.getElementById('navTasks').onclick = () => { closeDrawer(); sheets.tasks.classList.add('open'); setTaskRoute('list'); loadDesktopTasks(); };
 function taskDate(value) {
   if (!value) return '尚未运行';
   try { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
@@ -6704,10 +6900,16 @@ function renderDesktopTasks(data) {
 }
 async function loadDesktopTasks() {
   clearTimeout(desktopTaskPoll);
-  currentTaskId = ''; currentTaskRunId = '';
+  setTaskRoute('list');
   try {
     const r = await fetch('api/desktop-tasks', { cache: 'no-store' });
     const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '任务读取失败');
+    const signature = JSON.stringify(data.items || []);
+    if (signature === taskViewSignature) {
+      if (data.items?.some(task => task.running) && sheets.tasks.classList.contains('open')) desktopTaskPoll = setTimeout(loadDesktopTasks, 3000);
+      return;
+    }
+    taskViewSignature = signature;
     renderDesktopTasks(data);
   } catch (error) {
     tasksBody.innerHTML = '<div class="todo-empty"></div>';
@@ -6715,12 +6917,12 @@ async function loadDesktopTasks() {
   }
 }
 function taskBack(label, fn) {
-  const back = document.createElement('button'); back.className = 'task-back'; back.append(icEl('chevL', 18), document.createTextNode(label)); back.onclick = fn; return back;
+  const back = document.createElement('button'); back.className = 'task-back'; back.append(icEl('chevL', 18), document.createTextNode(label)); back.onclick = fn || taskBackOne; return back;
 }
 function renderTaskDetail(data) {
   const task = data.task;
   tasksBody.innerHTML = '';
-  tasksBody.appendChild(taskBack('全部定时任务', loadDesktopTasks));
+  tasksBody.appendChild(taskBack('全部定时任务'));
   const hero = document.createElement('section'); hero.className = 'task-detail-hero';
   const title = document.createElement('h1'); title.textContent = task.name || task.id;
   const desc = document.createElement('p'); desc.textContent = task.description || '';
@@ -6746,19 +6948,25 @@ function renderTaskDetail(data) {
 }
 async function openTaskDetail(id, options = {}) {
   clearTimeout(desktopTaskPoll);
-  currentTaskId = id; currentTaskRunId = '';
+  setTaskRoute('detail', id);
   if (!options.quiet) taskLoading();
   try {
     const r = await fetch('api/desktop-tasks/' + encodeURIComponent(id), { cache: 'no-store' });
     const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '任务详情读取失败');
     if (currentTaskId !== id || currentTaskRunId) return;
+    const signature = JSON.stringify({ task: data.task, runs: data.runs, control: data.control });
+    if (options.quiet && signature === taskViewSignature) {
+      if (data.runs?.some(item => ['queued', 'running'].includes(item.status))) desktopTaskPoll = setTimeout(() => openTaskDetail(id, { quiet: true }), 2500);
+      return;
+    }
+    taskViewSignature = signature;
     renderTaskDetail(data);
-  } catch (error) { tasksBody.innerHTML = ''; tasksBody.append(taskBack('全部定时任务', loadDesktopTasks)); const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '任务详情读不到：' + (error.message || '请检查 Mac 端'); tasksBody.appendChild(empty); }
+  } catch (error) { tasksBody.innerHTML = ''; tasksBody.append(taskBack('全部定时任务')); const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '任务详情读不到：' + (error.message || '请检查 Mac 端'); tasksBody.appendChild(empty); }
 }
 function renderTaskRun(data) {
   const { task, run } = data;
   tasksBody.innerHTML = '';
-  tasksBody.appendChild(taskBack(task.name || '返回任务', () => openTaskDetail(task.id)));
+  tasksBody.appendChild(taskBack(task.name || '返回任务'));
   const hero = document.createElement('section'); hero.className = 'task-detail-hero';
   const title = document.createElement('h1'); title.textContent = taskResultLabel(run.status);
   const desc = document.createElement('p'); desc.textContent = taskFullDate(run.startedAt) + (taskDuration(run) ? ' · 用时 ' + taskDuration(run) : '');
@@ -6786,14 +6994,20 @@ function renderTaskRun(data) {
 }
 async function openTaskRun(taskId, runId, options = {}) {
   clearTimeout(desktopTaskPoll);
-  currentTaskId = taskId; currentTaskRunId = runId;
+  setTaskRoute('run', taskId, runId);
   if (!options.quiet) taskLoading();
   try {
     const r = await fetch('api/desktop-tasks/' + encodeURIComponent(taskId) + '/runs/' + encodeURIComponent(runId), { cache: 'no-store' });
     const data = await r.json(); if (!r.ok || data.ok === false) throw new Error(data.error || '运行记录读取失败');
     if (currentTaskId !== taskId || currentTaskRunId !== runId) return;
+    const signature = JSON.stringify(data);
+    if (options.quiet && signature === taskViewSignature) {
+      if (['queued', 'running'].includes(data.run?.status)) desktopTaskPoll = setTimeout(() => openTaskRun(taskId, runId, { quiet: true }), 2000);
+      return;
+    }
+    taskViewSignature = signature;
     renderTaskRun(data);
-  } catch (error) { tasksBody.innerHTML = ''; tasksBody.append(taskBack('返回任务', () => openTaskDetail(taskId))); const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '运行记录读不到：' + (error.message || '请检查 Mac 端'); tasksBody.appendChild(empty); }
+  } catch (error) { tasksBody.innerHTML = ''; tasksBody.append(taskBack('返回任务')); const empty = document.createElement('div'); empty.className = 'todo-empty'; empty.textContent = '运行记录读不到：' + (error.message || '请检查 Mac 端'); tasksBody.appendChild(empty); }
 }
 async function desktopTaskAction(id, action, button, stayOnTask = false) {
   button.disabled = true;
@@ -6822,12 +7036,77 @@ window.onNativeOpenRoute = route => {
   }
 };
 
+class TaskPageMotion {
+  constructor(wrap, body) {
+    this.wrap = wrap;
+    this.body = body;
+    this.drag = null;
+    this.frame = 0;
+    this.motionActive = false;
+    const panel = wrap.querySelector('.sheet');
+    panel.addEventListener('touchstart', event => this.start(event), { passive: true, capture: true });
+    window.addEventListener('touchmove', event => this.move(event), { passive: false });
+    window.addEventListener('touchend', event => this.end(event), { passive: false });
+    window.addEventListener('touchcancel', event => this.cancel(event), { passive: false });
+  }
+  start(event) {
+    if (!this.wrap.classList.contains('open') || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    this.drag = { id: touch.identifier, x: touch.clientX, y: touch.clientY, lastX: touch.clientX, lastY: touch.clientY, at: performance.now(), moved: false };
+  }
+  point(event) {
+    if (!this.drag) return null;
+    return [...event.touches, ...event.changedTouches].find(touch => touch.identifier === this.drag.id) || null;
+  }
+  move(event) {
+    const drag = this.drag, touch = this.point(event);
+    if (!drag || !touch) return;
+    drag.lastX = touch.clientX; drag.lastY = touch.clientY;
+    const dx = drag.lastX - drag.x, dy = drag.lastY - drag.y;
+    if (!drag.moved) {
+      if (Math.abs(dx) < 9 && Math.abs(dy) < 9) return;
+      if (Math.abs(dy) >= Math.abs(dx) * .82) { this.drag = null; return; }
+      drag.moved = true;
+      this.wrap.classList.add('task-swiping');
+      this.body.style.transition = 'none';
+      if (!this.motionActive) { this.motionActive = true; beginUiMotion(); }
+    }
+    if (!this.frame) this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      if (this.drag === drag) this.body.style.transform = `translate3d(${drag.lastX - drag.x}px,0,0)`;
+    });
+    if (event.cancelable) event.preventDefault();
+  }
+  finish(event, cancelled) {
+    const drag = this.drag;
+    this.drag = null;
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    if (!drag?.moved) return;
+    const dx = drag.lastX - drag.x;
+    const velocity = dx / Math.max(1, performance.now() - drag.at);
+    const commit = !cancelled && (Math.abs(dx) > Math.min(96, innerWidth * .24) || Math.abs(velocity) > .65);
+    this.body.style.transition = 'transform .22s cubic-bezier(.22,.8,.24,1)';
+    this.body.style.transform = commit ? `translate3d(${dx < 0 ? -innerWidth : innerWidth}px,0,0)` : 'translate3d(0,0,0)';
+    setTimeout(() => {
+      this.wrap.classList.remove('task-swiping');
+      this.body.style.transition = '';
+      this.body.style.transform = '';
+      if (this.motionActive) { this.motionActive = false; endUiMotion(); }
+      if (commit) taskBackOne();
+    }, 225);
+    if (event?.cancelable) event.preventDefault();
+  }
+  end(event) { const touch = this.point(event); if (touch && this.drag) { this.drag.lastX = touch.clientX; this.drag.lastY = touch.clientY; } this.finish(event, false); }
+  cancel(event) { this.finish(event, true); }
+}
+const taskPageMotion = new TaskPageMotion(sheets.tasks, tasksBody);
+
 document.querySelectorAll('[data-close]').forEach(el => {
   el.onclick = () => {
     const k = el.dataset.close;
     if (k === 'drawer') return closeDrawer();
     if (k === 'tool') { sheetStack = []; }
-    if (k === 'tasks') clearTimeout(desktopTaskPoll);
+    if (k === 'tasks') { closeTasksPage(); return; }
     const wrap = sheets[k];
     if (k === 'add') return closeAddSheet();
     if (!wrap) return;
@@ -6850,6 +7129,7 @@ class BottomSheetMotion {
     this.frame = 0;
     this.animationId = 0;
     this.isOpen = false;
+    this.motionActive = false;
     this.suppressClickUntil = 0;
     if (!this.panel) return;
 
@@ -6944,6 +7224,7 @@ class BottomSheetMotion {
   settle(state, options = {}) {
     if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
     const id = ++this.animationId;
+    if (!this.motionActive) { this.motionActive = true; beginUiMotion(); }
     this.state = state;
     this.syncStateClass(state);
     this.wrap.classList.remove('dragging');
@@ -6953,6 +7234,7 @@ class BottomSheetMotion {
       setTimeout(() => {
         if (id !== this.animationId) return;
         this.wrap.classList.remove('open');
+        if (this.motionActive) { this.motionActive = false; endUiMotion(); }
       }, 215);
       return;
     }
@@ -6960,6 +7242,7 @@ class BottomSheetMotion {
       if (id !== this.animationId) return;
       this.panel.style.transition = '';
       this.panel.style.willChange = '';
+      if (this.motionActive) { this.motionActive = false; endUiMotion(); }
     }, 225);
   }
 
@@ -6974,6 +7257,7 @@ class BottomSheetMotion {
     this.animationId++;
     if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
     this.drag = null;
+    if (this.motionActive) { this.motionActive = false; endUiMotion(); }
     this.wrap.classList.remove('dragging', 'expanded');
     this.panel.style.transition = '';
     this.panel.style.willChange = '';
@@ -7061,6 +7345,7 @@ class BottomSheetMotion {
       try { this.panel.setPointerCapture(event.pointerId); } catch {}
     }
     this.wrap.classList.add('dragging');
+    if (!this.motionActive) { this.motionActive = true; beginUiMotion(); }
     this.panel.style.transition = 'none';
     this.panel.style.willChange = 'transform';
   }
@@ -7273,6 +7558,49 @@ async function pushState() {
     return sub;
   } catch { pushVal.textContent = '问不到'; return null; }
 }
+function readNotificationDiagnostics() {
+  if (!window.Android?.notificationDiagnostics) return null;
+  try { return JSON.parse(String(window.Android.notificationDiagnostics() || '{}')); }
+  catch { return null; }
+}
+function notificationDiagnosticSummary(data) {
+  if (!data) return '拿不到诊断信息';
+  if (!data.permission) return '系统通知权限未允许';
+  if (!data.enabled) return '应用内通知开关未开启';
+  if (!data.endpoint) return '还没有保存 Mac / Cloudflare 地址';
+  if (data.lastStatus === 'error') return '轮询失败：' + (data.lastError || '未知错误');
+  if (data.lastSuccess) {
+    const at = new Date(Number(data.lastSuccess));
+    return '系统通知正常；最近连接成功 ' + at.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + '，收到 ' + Number(data.lastCount || 0) + ' 条';
+  }
+  return data.periodic ? '后台任务已登记，等待首次连接结果' : '后台任务尚未登记';
+}
+const pushDiagVal = document.getElementById('pushDiagVal');
+document.getElementById('pushDiagRow').onclick = () => {
+  const before = readNotificationDiagnostics();
+  if (before && !before.permission) {
+    pushDiagVal.textContent = '权限未开';
+    try { window.Android.openNotificationSettings?.(); } catch {}
+    note('（请在系统设置里打开通知权限，回来后再点“通知诊断”）', 'err');
+    return;
+  }
+  if (!before?.enabled) {
+    pushDiagVal.textContent = '尚未开启';
+    note('（先打开上一行“手机通知”）');
+    return;
+  }
+  pushDiagVal.textContent = '检查中…';
+  try {
+    window.Android.testNotification?.();
+    window.Android.pollNotificationsNow?.();
+  } catch {}
+  setTimeout(() => {
+    const after = readNotificationDiagnostics();
+    const summary = notificationDiagnosticSummary(after);
+    pushDiagVal.textContent = after?.lastStatus === 'error' ? '轮询失败' : after?.lastSuccess ? '正常' : '已登记';
+    note('（' + summary + '）', after?.lastStatus === 'error' ? 'err' : '');
+  }, 1800);
+};
 async function turnOnPush() {
   if (window.Android?.enableNotifications) {
     if (!window.DWELL_API_BASE) {
@@ -7341,6 +7669,20 @@ document.getElementById('aliveRow').onclick = async () => {
     const d = await (await fetch('api/status')).json();
     v.textContent = d.demo || window.DWELL_DEMO ? '未连接 Mac' : d.alive ? '活着 · ' + new Date(d.since * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + ' 醒的' : '断了，会自己爬起来';
   } catch { v.textContent = '问不到'; }
+};
+
+document.getElementById('appDiagRow').onclick = () => {
+  if (!window.Android?.appDiagnostics) {
+    note('（浏览器版没有 Android 运行诊断）');
+    return;
+  }
+  try {
+    const data = JSON.parse(String(window.Android.appDiagnostics() || '{}'));
+    if (!data.kind) { note('（没有记录到 Android 或网页异常）'); return; }
+    const at = data.at ? new Date(Number(data.at)).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    document.getElementById('appDiagVal').textContent = at || '有记录';
+    note('（最近运行记录：' + data.kind + (data.detail ? ' · ' + data.detail : '') + '）', /crash|error|rejection/.test(data.kind) ? 'err' : '');
+  } catch { note('（运行诊断读取失败）', 'err'); }
 };
 
 (async () => {
@@ -7990,6 +8332,12 @@ async function loadChats() {
   try {
     const d = await (await fetch('api/chats?scope=' + chatScope, { cache: 'no-store' })).json();
     chatRows = Array.isArray(d.items) ? d.items : [];
+    const current = chatRows.find(item => item.current);
+    if (current && activeChatKey === 'current') {
+      const cached = chatMessageCache.get('current');
+      activeChatKey = current.id;
+      if (cached) { chatMessageCache.set(current.id, cached); chatMessageCache.delete('current'); }
+    }
     document.getElementById('chatOffline').classList.toggle('on', !!d.offline);
     renderChats();
   } catch {
@@ -7998,24 +8346,42 @@ async function loadChats() {
   }
 }
 
+let chatSwitchController = null;
 async function switchChat(item) {
   if (item.current) { sheets.chats.classList.remove('open'); return; }
   sheets.chats.classList.remove('open');
   setChatManaging(false);
   setTitle(chatDisplayTitle(item));
-  resetConversationView({ preserveBusy: false });
+  try { chatSwitchController?.abort(); } catch {}
+  const controller = new AbortController();
+  chatSwitchController = controller;
+  activeChatKey = item.id;
+  const cached = showCachedConversation(item.id);
+  if (!cached) resetConversationView({ preserveBusy: false });
   welcome.classList.add('off');
-  const loading = document.createElement('div'); loading.className = 'chat-open-loading'; loading.innerHTML = '<i></i><i></i><i></i>'; log.appendChild(loading);
+  const loading = document.createElement('div');
+  loading.className = 'chat-open-loading'; loading.innerHTML = '<i></i><i></i><i></i>';
+  if (!cached) log.appendChild(loading);
+  switchInProgress = true;
   try {
     const response = await fetch('api/chats', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'switch', id: item.id })
+      body: JSON.stringify({ action: 'switch', id: item.id }), signal: controller.signal
     });
     if (!response.ok) throw new Error('switch rejected');
+    const switched = await response.json();
+    if (chatSwitchController !== controller) return;
+    const current = (switched.items || []).find(chat => chat.current);
+    if (current?.id) activeChatKey = current.id;
     setArmed(false);
-    await restartEventStream({ loadHistory: true });
+    await restartEventStream({ loadHistory: true, keepHistoryIfUnchanged: cached && activeChatKey === item.id });
     scroll(true);
-  } catch { loading.remove(); syncWelcome(); note('（会话没有打开，请检查连接）', 'err'); }
+  } catch (error) {
+    if (error?.name !== 'AbortError') { loading.remove(); syncWelcome(); note('（会话没有打开，请检查连接）', 'err'); }
+  } finally {
+    if (chatSwitchController === controller) chatSwitchController = null;
+    switchInProgress = false;
+  }
 }
 
 document.getElementById('chatsMenu').onclick = () => {
@@ -8162,25 +8528,7 @@ async function loadUsage() {
   }
 }
 
-/* ---------- 选模型：main / effort / more 三个子页 ---------- */
-const MODELS_MAIN = [
-  { id: 'claude-fable-5', name: 'Fable 5', desc: 'For your toughest challenges' },
-  { id: 'claude-opus-5', name: 'Opus 5', desc: '' },
-  { id: 'claude-sonnet-5', name: 'Sonnet 5', desc: 'Most efficient for everyday tasks' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Fastest for quick answers' },
-];
-/* 旧模型这四个门牌号是拿真钥匙一个个验过的 */
-const MODELS_MORE = [
-  { id: 'claude-opus-4-8', name: 'Opus 4.8', desc: '' },
-  { id: 'claude-opus-4-7', name: 'Opus 4.7', desc: '' },
-  { id: 'claude-opus-4-6', name: 'Opus 4.6', desc: '' },
-  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: '' },
-];
-const MODELS_1M = [
-  { id: 'claude-opus-4-6[1m]', name: 'Opus 4.6 · 1M', desc: '一百万上下文，少压缩' },
-  { id: 'claude-opus-4-8[1m]', name: 'Opus 4.8 · 1M', desc: '一百万上下文，少压缩' },
-  { id: 'claude-sonnet-5[1m]', name: 'Sonnet 5 · 1M', desc: '一百万上下文，少压缩' },
-];
+/* ---------- 选模型：只展示当前后端真实能调用的项目 ---------- */
 const EFFORTS = [
   { id: 'low', name: 'Low', desc: 'Quick replies to simple questions' },
   { id: 'medium', name: 'Medium', desc: 'Light, casual tasks' },
@@ -8188,30 +8536,46 @@ const EFFORTS = [
   { id: 'xhigh', name: 'Extra', desc: 'Complex, detailed work' },
   { id: 'max', name: 'Max', desc: 'The hardest problems. Takes longest.' },
 ];
-let curModel = '';       // 真跑着的（init 报的）
+let availableModels = [{ id: 'default', name: 'Mac 默认模型', desc: '跟随 Claude Code 配置' }];
+let modelProvider = 'Claude Code CLI';
+let modelResolved = '';
+let modelSupportsEffort = true;
+let curModel = 'default';
+let runtimeModel = '';
 let curEffort = 'high';
 const pill = document.getElementById('modelPill');
 
-function sameModel(cur, id) {
-  return cur === id || (cur.startsWith(id) && !cur.slice(id.length).startsWith('['));
-}
 function displayName(id) {
-  const all = MODELS_1M.concat(MODELS_MAIN, MODELS_MORE);
-  const hit = all.find(m => id === m.id || sameModel(id, m.id));
+  const hit = availableModels.find(m => id === m.id);
   if (hit) return hit.name;
-  // init 报的全名可能带日期尾巴，按特征认一下
   const s = String(id);
   const m = s.match(/claude-(fable|opus|sonnet|haiku)-(\d+)(?:-(\d+))?/);
   if (m) {
     const fam = m[1][0].toUpperCase() + m[1].slice(1);
     return fam + ' ' + m[2] + (m[3] && m[3].length <= 2 ? '.' + m[3] : '');
   }
-  return s || '…';
+  return ({ default: 'Mac 默认模型', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' })[s] || s || '…';
 }
 function setModelPill(id) {
-  curModel = id || '';
-  const name = displayName(curModel);
-  pill.textContent = name === 'Sonnet 5' && curEffort === 'high' ? 'Sonnet 5 Thinking' : name;
+  const name = displayName(id || curModel);
+  pill.textContent = curEffort === 'high' && /sonnet/i.test(name) ? name + ' Thinking' : name;
+}
+function applyModelData(data) {
+  if (Array.isArray(data.items) && data.items.length) availableModels = data.items;
+  modelProvider = data.provider || modelProvider;
+  modelResolved = data.resolved || '';
+  modelSupportsEffort = data.supportsEffort !== false;
+  curModel = data.model || availableModels[0]?.id || 'default';
+  runtimeModel = data.runtime || runtimeModel;
+  curEffort = data.effort || 'high';
+  setModelPill(runtimeModel || curModel);
+}
+async function refreshModelCatalog() {
+  const response = await fetch('api/model', { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok || data.ok === false) throw new Error(data.error || '模型列表读取失败');
+  applyModelData(data);
+  return data;
 }
 
 const modelSheetEl = sheets.model;
@@ -8220,7 +8584,12 @@ const modelBody = document.getElementById('modelBody');
 const modelBack = document.getElementById('modelBack');
 let modelView = 'main';
 
-function openModelSheet() { modelView = 'main'; renderModelSheet(); modelSheetEl.classList.add('open'); }
+function openModelSheet() {
+  modelView = 'main';
+  renderModelSheet();
+  modelSheetEl.classList.add('open');
+  refreshModelCatalog().then(renderModelSheet).catch(error => note('（模型能力读取失败：' + error.message + '）', 'err'));
+}
 pill.onclick = openModelSheet;
 modelBack.onclick = () => {
   if (modelView !== 'main') { modelView = 'main'; renderModelSheet(); }
@@ -8261,38 +8630,26 @@ function renderModelSheet() {
   modelBody.innerHTML = '';
 
   if (modelView === 'main') {
-    modelTitle.textContent = 'Select model';
+    modelTitle.textContent = '选择模型';
     const g = document.createElement('div');
     g.className = 'group';
-    MODELS_MAIN.forEach(m => {
-      const on = curModel === m.id || curModel.startsWith(m.id);
-      g.appendChild(mrowEl(m, on, () => pickModel(m)));
+    availableModels.forEach(m => {
+      g.appendChild(mrowEl(m, curModel === m.id, () => pickModel(m)));
     });
     modelBody.appendChild(g);
-    const gap = document.createElement('div');
-    gap.className = 'group-label';
-    modelBody.appendChild(gap);
-    const g2 = document.createElement('div');
-    g2.className = 'group';
-    const effRow = document.createElement('button');
-    effRow.className = 'grow';
-    effRow.innerHTML = '<span>Effort</span><span class="val">' + (EFFORTS.find(e => e.id === curEffort)?.name || 'High') + '</span><span class="chev">›</span>';
-    effRow.onclick = () => { modelView = 'effort'; renderModelSheet(); };
-    g2.appendChild(effRow);
-    modelBody.appendChild(g2);
-    const gap2 = document.createElement('div');
-    gap2.className = 'group-label';
-    modelBody.appendChild(gap2);
-    const g3 = document.createElement('div');
-    g3.className = 'group';
-    const moreRow = document.createElement('button');
-    moreRow.className = 'grow';
-    moreRow.innerHTML = '<span>More models</span><span class="chev">›</span>';
-    moreRow.onclick = () => { modelView = 'more'; renderModelSheet(); };
-    g3.appendChild(moreRow);
-    modelBody.appendChild(g3);
+    if (modelSupportsEffort) {
+      const gap = document.createElement('div'); gap.className = 'group-label'; modelBody.appendChild(gap);
+      const g2 = document.createElement('div'); g2.className = 'group';
+      const effRow = document.createElement('button'); effRow.className = 'grow';
+      effRow.innerHTML = '<span>思考强度</span><span class="val">' + (EFFORTS.find(e => e.id === curEffort)?.name || 'High') + '</span><span class="chev">›</span>';
+      effRow.onclick = () => { modelView = 'effort'; renderModelSheet(); };
+      g2.appendChild(effRow); modelBody.appendChild(g2);
+    }
+    const provider = document.createElement('div'); provider.className = 'gnote';
+    provider.textContent = '实际通道：' + modelProvider + (modelResolved ? ' · ' + modelResolved : '');
+    modelBody.appendChild(provider);
   } else if (modelView === 'effort') {
-    modelTitle.textContent = 'Effort';
+    modelTitle.textContent = '思考强度';
     const g = document.createElement('div');
     g.className = 'group';
     EFFORTS.forEach(e => {
@@ -8303,24 +8660,6 @@ function renderModelSheet() {
     noteEl.className = 'gnote';
     noteEl.textContent = 'Higher effort means more thorough responses, but takes longer and uses your limits faster.';
     modelBody.appendChild(noteEl);
-  } else {
-    modelTitle.textContent = 'More models';
-    const g = document.createElement('div');
-    g.className = 'group';
-    MODELS_MORE.forEach(m => {
-      g.appendChild(mrowEl(m, sameModel(curModel, m.id), () => pickModel(m)));
-    });
-    modelBody.appendChild(g);
-    const t1 = document.createElement('div');
-    t1.className = 'gnote';
-    t1.textContent = '一百万上下文（少压缩，长窗口不容易被截断）';
-    modelBody.appendChild(t1);
-    const g1 = document.createElement('div');
-    g1.className = 'group';
-    MODELS_1M.forEach(m => {
-      g1.appendChild(mrowEl(m, curModel === m.id, () => pickModel(m)));
-    });
-    modelBody.appendChild(g1);
   }
 }
 
@@ -8329,31 +8668,32 @@ async function pickModel(m) {
   modelSheetEl.classList.remove('open');
   note('（换成 ' + m.name + '，正在重开一轮）');
   try {
-    await fetch('api/model', {
+    const response = await fetch('api/model', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: m.id })
     });
-  } catch { note('（没换上，再试一次）', 'err'); }
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || '模型不可用');
+    runtimeModel = '';
+    applyModelData(data);
+  } catch (error) { note('（没换上：' + error.message + '）', 'err'); }
 }
 async function pickEffort(e) {
   if (curEffort === e.id) { modelView = 'main'; renderModelSheet(); return; }
   modelSheetEl.classList.remove('open');
   note('（用力档调到 ' + e.name + '，正在重开一轮）');
   try {
-    await fetch('api/model', {
+    const response = await fetch('api/model', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ effort: e.id })
     });
-  } catch { note('（没调上，再试一次）', 'err'); }
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || '强度不可用');
+    applyModelData(data);
+  } catch (error) { note('（没调上：' + error.message + '）', 'err'); }
 }
 
-(async () => {
-  try {
-    const d = await (await fetch('api/model')).json();
-    curEffort = d.effort || 'high';
-    setModelPill(d.model || '');
-  } catch { setModelPill(''); }
-})();
+refreshModelCatalog().catch(() => setModelPill(curModel));
 
 /* ---------- 添加照片和文件 ---------- */
 const addSheetEl = document.getElementById('addSheet');
@@ -8635,6 +8975,18 @@ document.addEventListener('touchend', (e) => {
     if (e.offsetX > track.clientWidth * 0.6) { move(MAX()); open_(); }
   });
 })();
+
+window.addEventListener('error', event => {
+  try {
+    window.Android?.logDiagnostic?.('javascript_error', [event.message, event.filename, event.lineno, event.colno].filter(Boolean).join(' · '));
+  } catch {}
+});
+window.addEventListener('unhandledrejection', event => {
+  try {
+    const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || 'unknown rejection');
+    window.Android?.logDiagnostic?.('javascript_rejection', reason.slice(0, 1000));
+  } catch {}
+});
 
 initializeChatClient();
 box.focus();

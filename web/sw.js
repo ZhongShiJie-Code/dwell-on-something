@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dwell-shell-v0.4.6';
+const CACHE_NAME = 'dwell-shell-v0.4.7';
 const CORE_FILES = [
   './',
   './index.html',

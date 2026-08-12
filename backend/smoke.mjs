@@ -23,11 +23,11 @@ const json = (body, method = 'POST') => ({
 
 const health = await call('health');
 assert.equal(health.ok, true);
-assert.equal(health.version, '0.4.6');
+assert.equal(health.version, '0.4.7');
 
 const status = await call('status');
 assert.equal(status.alive, true);
-assert.equal(status.version, '0.4.6');
+assert.equal(status.version, '0.4.7');
 
 const context = await call('context');
 assert.equal(context.ok, true);
@@ -42,6 +42,17 @@ const projects = await call('projects');
 assert.ok(projects.items?.some(item => item.current && item.path));
 const connectors = await call('connectors');
 assert.ok(connectors.items?.some(item => item.name === 'Claude Code CLI'));
+
+let models = await call('model');
+assert.equal(models.provider, 'Claude Code CLI');
+assert.ok(models.items.some(item => item.id === 'default'));
+assert.ok(models.items.some(item => item.id === 'sonnet'));
+assert.equal(models.supportsEffort, true);
+models = await call('model', json({ model: 'sonnet', effort: 'medium' }));
+assert.equal(models.model, 'sonnet');
+assert.equal(models.effort, 'medium');
+assert.equal((await call('model', json({ model: 'made-up-model' }), 400)).error, 'model_not_available');
+await call('model', json({ model: 'default', effort: 'high' }));
 
 let access = await call('tool-access');
 assert.ok(access.items.includes('Ask'));
@@ -191,6 +202,11 @@ try {
 
   const configured = await call('apiconf', json({ base: mockBase, token: 'test-openai', model_opus: 'mock-model' }));
   assert.equal(configured.mode, 'api');
+  const apiModels = await call('model');
+  assert.equal(apiModels.provider, '备用 API');
+  assert.equal(apiModels.model, 'mock-model');
+  assert.deepEqual(apiModels.items.map(item => item.id), ['mock-model']);
+  assert.equal(apiModels.supportsEffort, false);
   const beforeProviderPoll = await call('poll?since=0&wait=0');
   const providerText = `provider-${stamp}`;
   await call('send', json({

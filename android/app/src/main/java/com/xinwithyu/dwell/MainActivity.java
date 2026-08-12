@@ -20,9 +20,12 @@ import android.speech.RecognitionListener;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
+import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -35,6 +38,7 @@ import android.window.OnBackInvokedDispatcher;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
@@ -52,14 +56,23 @@ public final class MainActivity extends Activity {
     private SpeechRecognizer speechRecognizer;
     private Intent voiceIntent;
     private boolean voiceListening;
+    private boolean voiceCancelled;
     private String pendingRoute = "";
     private boolean webReady;
+    private Thread.UncaughtExceptionHandler previousCrashHandler;
+    private Thread.UncaughtExceptionHandler crashHandler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         boolean systemDark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         setTheme(systemDark ? R.style.AppThemeDark : R.style.AppTheme);
         super.onCreate(savedInstanceState);
+        previousCrashHandler = Thread.getDefaultUncaughtExceptionHandler();
+        crashHandler = (thread, error) -> {
+            recordDiagnostic("native_crash", error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage()));
+            if (previousCrashHandler != null) previousCrashHandler.uncaughtException(thread, error);
+        };
+        Thread.setDefaultUncaughtExceptionHandler(crashHandler);
         applySystemBars(systemDark);
         captureRoute(getIntent());
 
@@ -80,6 +93,7 @@ public final class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
 
         webView.setBackgroundColor(systemDark ? Color.rgb(38, 38, 36) : Color.rgb(250, 249, 245));
+        if (Build.VERSION.SDK_INT >= 26) webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true);
         webView.addJavascriptInterface(new NativeBridge(), "Android");
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -96,6 +110,17 @@ public final class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 webReady = true;
                 flushPendingRoute();
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                recordDiagnostic("webview_render_gone", "crashed=" + detail.didCrash() + ", priority=" + detail.rendererPriorityAtExit());
+                webReady = false;
+                if (view == webView) webView = null;
+                try { view.removeJavascriptInterface("Android"); } catch (Exception ignored) {}
+                try { view.destroy(); } catch (Exception ignored) {}
+                runOnUiThread(MainActivity.this::recreate);
+                return true;
             }
         });
         webView.setWebChromeClient(new WebChromeClient() {
@@ -118,6 +143,16 @@ public final class MainActivity extends Activity {
                 }
                 if (fileChooserParams.isCaptureEnabled() && imageOnly) return launchCamera();
                 return launchDocumentPicker(accepts, fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+            }
+
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage message) {
+                if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR
+                        || message.messageLevel() == ConsoleMessage.MessageLevel.WARNING) {
+                    recordDiagnostic("web_console_" + message.messageLevel().name().toLowerCase(Locale.ROOT),
+                            message.message() + " @ " + message.sourceId() + ":" + message.lineNumber());
+                }
+                return super.onConsoleMessage(message);
             }
         });
 
@@ -268,6 +303,17 @@ public final class MainActivity extends Activity {
         webView.post(() -> webView.evaluateJavascript(script, null));
     }
 
+    private void recordDiagnostic(String kind, String detail) {
+        String clean = detail == null ? "" : detail;
+        if (clean.length() > 1600) clean = clean.substring(0, 1600);
+        Log.w("dwell", kind + ": " + clean);
+        getSharedPreferences(DwellNotificationJobService.PREFS, MODE_PRIVATE).edit()
+                .putString("diagnostic-last-kind", kind)
+                .putString("diagnostic-last-detail", clean)
+                .putLong("diagnostic-last-at", System.currentTimeMillis())
+                .apply();
+    }
+
     private void fallbackBack() {
         if (webView != null && webView.canGoBack()) webView.goBack();
         else finish();
@@ -290,6 +336,9 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (Thread.getDefaultUncaughtExceptionHandler() == crashHandler) {
+            Thread.setDefaultUncaughtExceptionHandler(previousCrashHandler);
+        }
         if (Build.VERSION.SDK_INT >= 33 && backCallback != null) {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
             backCallback = null;
@@ -322,8 +371,12 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public void stopVoiceInput() {
             runOnUiThread(() -> {
-                if (speechRecognizer != null && voiceListening) speechRecognizer.stopListening();
-                else evaluate("window.onNativeSpeechCancelled&&window.onNativeSpeechCancelled()");
+                voiceCancelled = true;
+                if (speechRecognizer != null) {
+                    try { speechRecognizer.cancel(); } catch (Exception ignored) {}
+                    destroySpeechRecognizer();
+                }
+                evaluate("window.onNativeSpeechCancelled&&window.onNativeSpeechCancelled()");
             });
         }
 
@@ -346,7 +399,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public void speak(String text, String key) {
-            final String value = text == null ? "" : text.trim();
+            final String value = cleanSpeechText(text);
             final String utteranceKey = key == null ? "dwell-speech" : key;
             runOnUiThread(() -> {
                 speechKey = utteranceKey;
@@ -375,22 +428,81 @@ public final class MainActivity extends Activity {
             if (textToSpeech == null || text.isEmpty()) return;
             textToSpeech.stop();
             textToSpeech.setLanguage(Locale.SIMPLIFIED_CHINESE);
+            textToSpeech.setSpeechRate(0.96f);
+            textToSpeech.setPitch(1.0f);
             textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override public void onStart(String utteranceId) {
-                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceId) + ",'started')");
+                    if (utteranceIndex(utteranceId) == 0) {
+                        evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceBase(utteranceId)) + ",'started')");
+                    }
                 }
                 @Override public void onDone(String utteranceId) {
-                    if (utteranceId.equals(speechKey)) speechKey = "";
-                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceId) + ",'done')");
+                    if (!utteranceFinal(utteranceId)) return;
+                    String base = utteranceBase(utteranceId);
+                    if (base.equals(speechKey)) speechKey = "";
+                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(base) + ",'done')");
                 }
                 @Override public void onError(String utteranceId) {
-                    if (utteranceId.equals(speechKey)) speechKey = "";
-                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(utteranceId) + ",'error')");
+                    String base = utteranceBase(utteranceId);
+                    if (base.equals(speechKey)) speechKey = "";
+                    evaluate("window.onNativeSpeechState&&window.onNativeSpeechState(" + JSONObject.quote(base) + ",'error')");
                 }
             });
-            Bundle params = new Bundle();
-            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, key);
-            textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, params, key);
+            List<String> chunks = speechChunks(text);
+            for (int i = 0; i < chunks.size(); i++) {
+                Bundle params = new Bundle();
+                String utteranceId = key + "::dwell::" + i + "::" + chunks.size();
+                params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId);
+                textToSpeech.speak(chunks.get(i), i == 0 ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD, params, utteranceId);
+            }
+        }
+
+        private String cleanSpeechText(String text) {
+            return String.valueOf(text == null ? "" : text)
+                    .replaceAll("(?s)```.*?```", "。代码内容已省略。")
+                    .replaceAll("https?://\\S+", "链接")
+                    .replaceAll("[*_~`#>|]", "")
+                    .replaceAll("\\s*\\n+\\s*", "。")
+                    .replaceAll("。{2,}", "。")
+                    .trim();
+        }
+
+        private List<String> speechChunks(String text) {
+            ArrayList<String> chunks = new ArrayList<>();
+            int max = Math.min(1800, TextToSpeech.getMaxSpeechInputLength() - 32);
+            String remaining = text;
+            while (!remaining.isEmpty()) {
+                if (remaining.length() <= max) { chunks.add(remaining); break; }
+                int cut = -1;
+                for (int i = Math.min(max, remaining.length() - 1); i > max / 2; i--) {
+                    if ("。！？；，.!?;,".indexOf(remaining.charAt(i)) >= 0) { cut = i + 1; break; }
+                }
+                if (cut < 1) cut = max;
+                chunks.add(remaining.substring(0, cut));
+                remaining = remaining.substring(cut).trim();
+            }
+            if (chunks.isEmpty()) chunks.add(text);
+            return chunks;
+        }
+
+        private String utteranceBase(String utteranceId) {
+            int marker = utteranceId == null ? -1 : utteranceId.lastIndexOf("::dwell::");
+            return marker < 0 ? String.valueOf(utteranceId) : utteranceId.substring(0, marker);
+        }
+
+        private int utteranceIndex(String utteranceId) {
+            try {
+                String suffix = utteranceId.substring(utteranceId.lastIndexOf("::dwell::") + 9);
+                return Integer.parseInt(suffix.substring(0, suffix.indexOf("::")));
+            } catch (Exception ignored) { return 0; }
+        }
+
+        private boolean utteranceFinal(String utteranceId) {
+            try {
+                String suffix = utteranceId.substring(utteranceId.lastIndexOf("::dwell::") + 9);
+                int split = suffix.indexOf("::");
+                return Integer.parseInt(suffix.substring(0, split)) + 1 == Integer.parseInt(suffix.substring(split + 2));
+            } catch (Exception ignored) { return true; }
         }
 
         @JavascriptInterface
@@ -432,6 +544,38 @@ public final class MainActivity extends Activity {
                         .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
                 try { startActivity(intent); } catch (ActivityNotFoundException ignored) {}
             });
+        }
+
+        @JavascriptInterface
+        public String notificationDiagnostics() {
+            return DwellNotificationJobService.diagnostics(MainActivity.this).toString();
+        }
+
+        @JavascriptInterface
+        public void testNotification() {
+            runOnUiThread(() -> DwellNotificationJobService.show(MainActivity.this, "dwell 通知测试", "系统通知通道正常；正在继续检查 Mac 消息轮询。", System.currentTimeMillis(), ""));
+        }
+
+        @JavascriptInterface
+        public void pollNotificationsNow() {
+            DwellNotificationJobService.pollNow(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void logDiagnostic(String kind, String detail) {
+            recordDiagnostic(kind == null ? "web" : kind, detail);
+        }
+
+        @JavascriptInterface
+        public String appDiagnostics() {
+            SharedPreferences prefs = getSharedPreferences(DwellNotificationJobService.PREFS, MODE_PRIVATE);
+            JSONObject out = new JSONObject();
+            try {
+                out.put("kind", prefs.getString("diagnostic-last-kind", ""));
+                out.put("detail", prefs.getString("diagnostic-last-detail", ""));
+                out.put("at", prefs.getLong("diagnostic-last-at", 0L));
+            } catch (Exception ignored) {}
+            return out.toString();
         }
 
         @JavascriptInterface
@@ -537,6 +681,7 @@ public final class MainActivity extends Activity {
             speechRecognizer.stopListening();
             return;
         }
+        voiceCancelled = false;
         voiceIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         voiceIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.SIMPLIFIED_CHINESE.toLanguageTag());
@@ -566,6 +711,11 @@ public final class MainActivity extends Activity {
             }
             @Override public void onError(int error) {
                 voiceListening = false;
+                if (voiceCancelled) {
+                    voiceCancelled = false;
+                    destroySpeechRecognizer();
+                    return;
+                }
                 String message;
                 switch (error) {
                     case SpeechRecognizer.ERROR_AUDIO: message = "没有收到麦克风声音"; break;
@@ -578,6 +728,7 @@ public final class MainActivity extends Activity {
                     default: message = "语音识别没有成功";
                 }
                 evaluate("window.onNativeSpeechError&&window.onNativeSpeechError(" + JSONObject.quote(message) + ")");
+                recordDiagnostic("speech_error", error + ":" + message);
                 destroySpeechRecognizer();
             }
             @Override public void onResults(Bundle results) {
@@ -598,12 +749,11 @@ public final class MainActivity extends Activity {
             }
             @Override public void onEvent(int eventType, Bundle params) {}
         });
-        voiceListening = true;
-        evaluate("window.onNativeSpeechReady&&window.onNativeSpeechReady()");
         try {
             speechRecognizer.startListening(voiceIntent);
         } catch (Exception error) {
             voiceListening = false;
+            recordDiagnostic("speech_start_error", error.getClass().getSimpleName() + ":" + error.getMessage());
             destroySpeechRecognizer();
             evaluate("window.onNativeSpeechError&&window.onNativeSpeechError('语音识别启动失败')");
         }

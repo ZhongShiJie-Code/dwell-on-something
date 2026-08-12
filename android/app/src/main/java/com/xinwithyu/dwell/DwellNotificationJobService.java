@@ -33,6 +33,11 @@ public final class DwellNotificationJobService extends JobService {
     static final String KEY_ENDPOINT = "backend-endpoint";
     static final String KEY_TOKEN = "backend-token";
     static final String KEY_LAST_SEQ = "notification-last-seq";
+    static final String KEY_LAST_ATTEMPT = "notification-last-attempt";
+    static final String KEY_LAST_SUCCESS = "notification-last-success";
+    static final String KEY_LAST_ERROR = "notification-last-error";
+    static final String KEY_LAST_STATUS = "notification-last-status";
+    static final String KEY_LAST_COUNT = "notification-last-count";
     static final String EXTRA_ROUTE = "dwell-notification-route";
 
     private static final int JOB_ID = 0x4457454C;
@@ -52,10 +57,18 @@ public final class DwellNotificationJobService extends JobService {
                 .setPeriodic(15 * 60 * 1000L)
                 .build();
         scheduler.schedule(info);
+        pollNow(context);
+    }
+
+    static void pollNow(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!prefs.getBoolean(KEY_ENABLED, false) || prefs.getString(KEY_ENDPOINT, "").isEmpty()) return;
+        JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if (scheduler == null) return;
         JobInfo immediate = new JobInfo.Builder(JOB_NOW_ID, new ComponentName(context, DwellNotificationJobService.class))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setMinimumLatency(1000L)
-                .setOverrideDeadline(30000L)
+                .setMinimumLatency(250L)
+                .setOverrideDeadline(5000L)
                 .build();
         scheduler.schedule(immediate);
     }
@@ -79,7 +92,8 @@ public final class DwellNotificationJobService extends JobService {
                 synchronized (POLL_LOCK) {
                     if (!signal.get()) poll(signal);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception error) {
+                recordFailure(error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage()));
             } finally {
                 if (cancellations.remove(jobId, signal) && !signal.get()) jobFinished(params, false);
             }
@@ -98,6 +112,7 @@ public final class DwellNotificationJobService extends JobService {
 
     private void poll(AtomicBoolean signal) throws Exception {
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        prefs.edit().putLong(KEY_LAST_ATTEMPT, System.currentTimeMillis()).putString(KEY_LAST_STATUS, "checking").apply();
         if (!prefs.getBoolean(KEY_ENABLED, false)) return;
         String endpoint = prefs.getString(KEY_ENDPOINT, "").replaceAll("/+$", "");
         String token = prefs.getString(KEY_TOKEN, "");
@@ -109,15 +124,18 @@ public final class DwellNotificationJobService extends JobService {
         connection.setReadTimeout(12000);
         connection.setRequestProperty("Accept", "application/json");
         if (!token.isEmpty()) connection.setRequestProperty("X-Dwell-Token", token);
-        int code = connection.getResponseCode();
-        if (code < 200 || code >= 300) {
+        int code;
+        String raw;
+        try {
+            code = connection.getResponseCode();
+            InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
+            raw = stream == null ? "" : readAll(stream);
+        } finally {
             connection.disconnect();
-            return;
         }
-        String raw = readAll(connection.getInputStream());
-        connection.disconnect();
+        if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code + (raw.isEmpty() ? "" : " · " + raw.substring(0, Math.min(160, raw.length()))));
         JSONObject data = new JSONObject(raw);
-        if (!data.optBoolean("ok", false)) return;
+        if (!data.optBoolean("ok", false)) throw new IllegalStateException(data.optString("error", "notification response not ok"));
         long next = data.optLong("next", since);
         JSONArray items = data.optJSONArray("items");
 
@@ -130,7 +148,48 @@ public final class DwellNotificationJobService extends JobService {
                 if (item != null) show(this, item.optString("title", "dwell"), item.optString("body", "有新消息"), item.optLong("id", System.currentTimeMillis()), item.optString("route", ""));
             }
         }
-        prefs.edit().putLong(KEY_LAST_SEQ, Math.max(since, next)).apply();
+        prefs.edit()
+                .putLong(KEY_LAST_SEQ, Math.max(since, next))
+                .putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
+                .putString(KEY_LAST_ERROR, "")
+                .putString(KEY_LAST_STATUS, "ok")
+                .putInt(KEY_LAST_COUNT, items == null ? 0 : items.length())
+                .apply();
+    }
+
+    private void recordFailure(String detail) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(KEY_LAST_STATUS, "error")
+                .putString(KEY_LAST_ERROR, detail == null ? "unknown" : detail.substring(0, Math.min(500, detail.length())))
+                .apply();
+    }
+
+    static JSONObject diagnostics(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        JSONObject out = new JSONObject();
+        try {
+            boolean permission = Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+            JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+            boolean periodic = false;
+            boolean immediate = false;
+            if (scheduler != null) {
+                for (JobInfo job : scheduler.getAllPendingJobs()) {
+                    if (job.getId() == JOB_ID) periodic = true;
+                    if (job.getId() == JOB_NOW_ID) immediate = true;
+                }
+            }
+            out.put("enabled", prefs.getBoolean(KEY_ENABLED, false));
+            out.put("permission", permission);
+            out.put("endpoint", !prefs.getString(KEY_ENDPOINT, "").isEmpty());
+            out.put("periodic", periodic);
+            out.put("immediate", immediate);
+            out.put("lastAttempt", prefs.getLong(KEY_LAST_ATTEMPT, 0L));
+            out.put("lastSuccess", prefs.getLong(KEY_LAST_SUCCESS, 0L));
+            out.put("lastError", prefs.getString(KEY_LAST_ERROR, ""));
+            out.put("lastStatus", prefs.getString(KEY_LAST_STATUS, "never"));
+            out.put("lastCount", prefs.getInt(KEY_LAST_COUNT, 0));
+        } catch (Exception ignored) {}
+        return out;
     }
 
     private String readAll(InputStream stream) throws Exception {

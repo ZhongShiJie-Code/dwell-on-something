@@ -63,7 +63,7 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 
 ## 已接入的真实能力
 
-- Claude Code CLI `stream-json` 流式回复、思考、工具调用、停止、继续会话和模型/effort 设置
+- Claude Code CLI `stream-json` 流式回复、思考、工具调用、停止、继续会话和模型/effort 设置；模型页从后端读取当前真实可用的 CLI 别名，不再展示写死的未来型号
 - 会话列表、重命名、收纳、新窗口、消息历史和增量事件轮询；同时读取 Mac `~/.claude` 的真实 Claude Code 会话，打开后可继续原会话
 - 图片会落到受限上传目录再交给本机 Claude Code；大文件分块上传完成后才加入当前消息
 - 待办（日常两栏）、日历事件/重复/重要日子/心情、你的日记、悄悄话
@@ -71,7 +71,7 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 - 仓库只读时间线、diff、文件树和文件内容，路径与输出长度均有限制
 - 音乐卡片从网易云歌曲 ID 查询曲名、歌手、专辑、封面和时长
 - 健康数据 `POST /api/health` 鉴权接收、快照展示；健康页可复制上传网址和独立令牌
-- 浏览器 Web Push，以及供 Android 原生后台任务读取的新消息接口
+- 浏览器 Web Push，以及供 Android 原生后台任务读取的新消息接口；Android 设置页可查看最近轮询时间、结果和具体错误
 - 本机用量记录、当前上下文估算、工作区项目、工具权限和项目 MCP 连接器状态
 - Claude Desktop 定时任务：名称、说明、周期、启用状态、最近运行时间和结果；配置内置桥后可暂停、恢复和立即运行，并在页面显示实时状态
 - OpenAI、OpenRouter、Anthropic 兼容的备用模型通道，含真实最小请求测试和图片输入

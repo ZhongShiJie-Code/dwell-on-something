@@ -48,7 +48,7 @@ const CLAUDE_MODEL_OVERRIDE = String(process.env.DWELL_CLAUDE_MODEL || '').trim(
 const GONG_MODEL = process.env.DWELL_GONG_MODEL || 'haiku';
 const PERMISSION_MODE = process.env.DWELL_PERMISSION_MODE || 'acceptEdits';
 const AUTH_TOKEN = process.env.DWELL_AUTH_TOKEN || '';
-const SERVER_VERSION = '0.4.6';
+const SERVER_VERSION = '0.4.7';
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_TEXT = 600_000;
 const MAX_UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -73,7 +73,7 @@ const files = {
 };
 
 const defaultState = {
-  model: 'claude-sonnet-5',
+  model: 'default',
   effort: 'high',
   activeChatId: 'main',
   armed: false,
@@ -487,6 +487,9 @@ async function load() {
   nook = await readJson(files.nook, { books: [], progress: {}, annotations: {} });
   subscriptions = await readJson(files.subscriptions, []);
   apiAuth = await readJson(files.apiAuth, { mode: 'subscription', base: '', models: {} });
+  const availableModelIds = new Set(modelCatalog().items.map(item => item.id));
+  if (!availableModelIds.has(state.model)) state.model = modelCatalog().items[0]?.id || 'default';
+  if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(state.effort)) state.effort = 'high';
   gong = await readJson(files.gong, []);
   feedback = await readJson(files.feedback, {});
   messages = await readJsonl(files.messages);
@@ -663,10 +666,61 @@ function activeChatRecord() {
 function modelForCli(model) {
   if (CLAUDE_MODEL_OVERRIDE) return CLAUDE_MODEL_OVERRIDE;
   const value = String(model || '').replace(/\[1m\]$/, '').toLowerCase();
+  if (!value || value === 'default') return undefined;
+  if (value === 'fable' || value.includes('fable')) return 'fable';
   if (value.includes('opus')) return 'opus';
   if (value.includes('haiku')) return 'haiku';
   if (value.includes('sonnet')) return 'sonnet';
   return undefined;
+}
+
+function modelCatalog() {
+  if (apiAuth.mode === 'api' && apiAuth.base) {
+    const configured = String(apiAuth.models?.model_opus || process.env.DWELL_API_MODEL || '').trim();
+    const items = configured ? [{ id: configured, name: configured.replace(/^~/, ''), desc: '当前备用 API 已验证并配置的模型' }] : [];
+    return {
+      provider: '备用 API',
+      locked: items.length <= 1,
+      supportsEffort: false,
+      items,
+      resolved: configured,
+    };
+  }
+  if (CLAUDE_MODEL_OVERRIDE) {
+    return {
+      provider: 'Claude Code CLI',
+      locked: true,
+      supportsEffort: true,
+      items: [{ id: CLAUDE_MODEL_OVERRIDE, name: CLAUDE_MODEL_OVERRIDE, desc: '由 Mac 环境变量 DWELL_CLAUDE_MODEL 固定' }],
+      resolved: CLAUDE_MODEL_OVERRIDE,
+    };
+  }
+  return {
+    provider: 'Claude Code CLI',
+    locked: false,
+    supportsEffort: true,
+    items: [
+      { id: 'default', name: 'Mac 默认模型', desc: '跟随这台 Mac 上 Claude Code 的当前默认配置' },
+      { id: 'fable', name: 'Fable', desc: 'Claude Code 官方模型别名' },
+      { id: 'opus', name: 'Opus', desc: 'Claude Code 官方模型别名' },
+      { id: 'sonnet', name: 'Sonnet', desc: 'Claude Code 官方模型别名' },
+      { id: 'haiku', name: 'Haiku', desc: 'Claude Code 官方模型别名' },
+    ],
+    resolved: modelForCli(state?.model) || 'Claude Code 默认配置',
+  };
+}
+
+function modelView() {
+  const catalog = modelCatalog();
+  const selected = catalog.items.some(item => item.id === state.model) ? state.model : (catalog.items[0]?.id || '');
+  return {
+    ok: true,
+    model: selected,
+    runtime: state.usage.last?.model || '',
+    effort: state.effort,
+    efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    ...catalog,
+  };
 }
 
 async function attachmentPrompt(attachments = []) {
@@ -784,7 +838,7 @@ function cliArgs(prompt, firstTurn, chatId = state.activeChatId, sessionOverride
 
 function providerRequest(base, prompt, attachments = [], stream = true, modelOverride = '', run = null) {
   const spec = providerSpec(base);
-  const configuredModel = modelOverride || apiAuth.models?.model_opus || process.env.DWELL_API_MODEL || state.model;
+  const configuredModel = modelOverride || state.model || apiAuth.models?.model_opus || process.env.DWELL_API_MODEL;
   const model = spec.kind === 'openai' ? String(configuredModel).replace(/^~/, '') : configuredModel;
   return {
     ...spec,
@@ -1388,8 +1442,27 @@ async function handleApi(req, res, url, origin) {
   }
   if (route === 'send' && method === 'POST') { const data = await bodyJson(req); await startTurn(data.text, data.attachments || [], { webSearch: !!data.web_search }); return ok(res, { ok: true }, origin); }
   if (route === 'stop' && method === 'POST') { const stopped = stopRun(); return ok(res, { ok: true, stopped }, origin); }
-  if (route === 'model' && method === 'GET') return ok(res, { ok: true, model: state.model, effort: state.effort }, origin);
-  if (route === 'model' && method === 'POST') { const data = await bodyJson(req); if (data.model) state.model = String(data.model).slice(0, 100); if (data.effort) state.effort = String(data.effort); const chat = activeChatRecord(); if (chat) chat.sessionId = null; state.sessionId = null; await persistAll(); return ok(res, { ok: true, model: state.model, effort: state.effort }, origin); }
+  if (route === 'model' && method === 'GET') return ok(res, modelView(), origin);
+  if (route === 'model' && method === 'POST') {
+    const data = await bodyJson(req);
+    const catalog = modelCatalog();
+    const nextModel = data.model ? String(data.model).slice(0, 200) : state.model;
+    const nextEffort = data.effort ? String(data.effort) : state.effort;
+    if (!catalog.items.some(item => item.id === nextModel)) return bad(res, 400, 'model_not_available', origin);
+    if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(nextEffort)) return bad(res, 400, 'effort_not_available', origin);
+    const changed = nextModel !== state.model || nextEffort !== state.effort;
+    state.model = nextModel;
+    state.effort = nextEffort;
+    if (changed) {
+      const chat = activeChatRecord();
+      if (chat) chat.sessionId = null;
+      state.sessionId = null;
+      emit({ type: 'system', subtype: 'model', model: state.model, effort: state.effort });
+      notifyWaiters();
+    }
+    await persistAll();
+    return ok(res, modelView(), origin);
+  }
   if (route === 'context' && method === 'GET') return ok(res, contextView(), origin);
   if (route === 'usage' && method === 'GET') return ok(res, usageView(), origin);
   if (route === 'projects' && method === 'GET') return ok(res, { ok: true, items: [{ id: 'current', name: path.basename(WORKSPACE), path: WORKSPACE, current: true }] }, origin);
@@ -1549,6 +1622,7 @@ async function handleApi(req, res, url, origin) {
     const data = await bodyJson(req);
     if (data.clear) {
       apiAuth = { mode: 'subscription', base: '', models: {} };
+      state.model = 'default';
     } else {
       const base = String(data.base || '').trim().replace(/\/+$/, '');
       const model = String(data.model_opus || '').trim();
@@ -1562,9 +1636,13 @@ async function handleApi(req, res, url, origin) {
         token: String(data.token || apiAuth.token || '').slice(0, 500),
         models: { model_opus: model.slice(0, 200) },
       };
+      state.model = apiAuth.models.model_opus;
     }
+    state.sessionId = null;
+    const chat = activeChatRecord();
+    if (chat) chat.sessionId = null;
     await persistAll();
-    return ok(res, { ok: true, mode: apiAuth.mode, base: apiAuth.base }, origin);
+    return ok(res, { ok: true, mode: apiAuth.mode, base: apiAuth.base, model: modelView() }, origin);
   }
   if (route === 'apitest' && method === 'POST') {
     const data = await bodyJson(req); const base = String(data.base || '').trim();
