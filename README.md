@@ -78,13 +78,22 @@
 
 ## Android APK
 
-前端已经封装成一个可安装的 Android WebView 应用，APK 在这里：
+Android 客户端已经升级为 Compose 原生核心，APK 在这里：
 
-- [dwell-debug.apk](dist/dwell-debug.apk)
+- [dwell-v0.6.0.apk](dist/dwell-v0.6.0.apk)
 - Android 工程：[android](android/)
 
-当前 APK 版本为 **0.4.7**。APK 内置 `web/` 前端，未配置地址时会明确显示离线演示；
-配置 Mac 后端地址并测试成功后，聊天和各功能页才走真实数据。
+当前 APK 版本为 **0.6.0**。聊天、会话、模型、侧栏、定时任务、设置、语音和通知已改为 Compose；
+待办、日历、日记、共读、日报、健康和仓库仍通过受控的本地 Legacy WebView 打开。首次安装先在 Mac
+运行 `cd backend && npm run pair`，再把六位码填进手机。设备令牌由 Android Keystore 保存，不进入 WebView 或 GitHub。
+
+v0.6.0 同时完成：SQLite WAL 数据迁移（启动前自动备份旧 JSON/JSONL）、REST v2、SSE 流式回复、Mac Claude Code
+会话读取、非破坏式重新生成版本、真实模型选择、定时任务运行详情、局域网与 Cloudflare 自动回退、语音输入兜底、
+Markdown 安全朗读、系统主题跟随、崩溃循环安全模式和 WorkManager 通知补偿。
+
+> v0.4.7 使用 debug 签名，v0.6.0 已切换为长期保留的正式 release key。因此从 v0.4.7 升级时必须先卸载旧版一次，
+> 再安装 v0.6.0 并重新配对；从 v0.6.0 开始可直接覆盖升级。未配置 Firebase 凭据时没有应用被彻底杀死后的秒级 FCM，
+> 后台通知最长可能约 15 分钟。
 
 0.4.3 默认进入未落库的新会话；第一条消息发出后才创建记录。侧边栏「聊天」进入完整会话页，
 支持搜索、进行中/已归档筛选和批量归档/恢复。添加、日记等底部卡片共用同一套拖拽手感：
@@ -108,4 +117,6 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 ./gradlew assembleDebug
 ```
 
-这是个人测试用的 debug APK，不是 Google Play 发布包。Mac 后端和手机连接方式见 [`backend/README.md`](backend/README.md)。
+这是已签名、可侧载的个人发布 APK，不是 Google Play 商店包。完整 v0.6.0 设计与验收边界见
+[`docs/superpowers/specs/2026-08-13-dwell-v060-native-foundation-design.md`](docs/superpowers/specs/2026-08-13-dwell-v060-native-foundation-design.md)，
+Mac 后端和手机连接方式见 [`backend/README.md`](backend/README.md)。

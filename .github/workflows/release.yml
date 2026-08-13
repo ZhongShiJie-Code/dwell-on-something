@@ -1,0 +1,54 @@
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Verify backend
+        working-directory: backend
+        run: npm ci && npm run check && npm test
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore release keystore
+        env:
+          DWELL_KEYSTORE_BASE64: ${{ secrets.DWELL_RELEASE_KEYSTORE_BASE64 }}
+        run: echo "$DWELL_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dwell-release.jks"
+      - name: Build signed APK
+        working-directory: android
+        env:
+          DWELL_RELEASE_KEYSTORE: ${{ runner.temp }}/dwell-release.jks
+          DWELL_RELEASE_STORE_PASSWORD: ${{ secrets.DWELL_RELEASE_STORE_PASSWORD }}
+          DWELL_RELEASE_KEY_ALIAS: ${{ secrets.DWELL_RELEASE_KEY_ALIAS }}
+          DWELL_RELEASE_KEY_PASSWORD: ${{ secrets.DWELL_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew testDebugUnitTest lintDebug assembleRelease --console=plain
+      - name: Name APK and checksum
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk "dwell-${{ inputs.tag }}.apk"
+          sha256sum "dwell-${{ inputs.tag }}.apk" > "dwell-${{ inputs.tag }}.apk.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: |
+            dwell-${{ inputs.tag }}.apk
+            dwell-${{ inputs.tag }}.apk.sha256

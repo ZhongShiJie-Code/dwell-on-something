@@ -4,11 +4,14 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check claude-history.mjs && node --check desktop-tasks.mjs && node --check desktop-task-history.mjs && node --check desktop-task-bridge.mjs",
+    "check": "node --check server.mjs && node --check pairing-code.mjs && node --check claude-history.mjs && node --check desktop-tasks.mjs && node --check desktop-task-history.mjs && node --check desktop-task-bridge.mjs && node --check db/database.mjs",
+    "test": "node --test '*.test.mjs' 'db/*.test.mjs'",
+    "pair": "node pairing-code.mjs",
     "smoke": "node smoke.mjs",
     "news": "node news_daily.mjs"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "web-push": "^3.6.7"
   },
   "engines": {

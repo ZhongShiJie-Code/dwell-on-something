@@ -3,10 +3,9 @@
 /*
  * dwell backend
  *
- * A dependency-free local service for the mobile/web client.  It deliberately
- * keeps the transport small: JSON/JSONL on disk, native fetch, and the
- * Claude Code CLI already installed on the Mac.  No credentials are bundled
- * in the repository.
+ * Local service for the mobile/web client. Structured state lives in SQLite;
+ * Markdown and uploaded files stay on disk. No credentials are bundled in the
+ * repository.
  */
 
 import http from 'node:http';
@@ -23,6 +22,7 @@ import readline from 'node:readline';
 import { listDesktopTasks, controlDesktopTask, desktopTaskDetail, desktopTaskRunDetail } from './desktop-tasks.mjs';
 import { recentCompletedTaskRuns } from './desktop-task-history.mjs';
 import { listClaudeCodeChats, loadClaudeCodeChat } from './claude-history.mjs';
+import { openDwellDatabase } from './db/database.mjs';
 
 let webpush = null;
 try { ({ default: webpush } = await import('web-push')); } catch { /* optional until npm install */ }
@@ -40,7 +40,23 @@ const PORT = Number(process.env.DWELL_PORT || 8787);
 const WORKSPACE = path.resolve(process.env.DWELL_WORKSPACE || ROOT);
 const STORY_DIR = path.join(WORKSPACE, 'story');
 const NIGHT_DIR = path.join(WORKSPACE, 'night');
-const CLAUDE_BIN = process.env.DWELL_CLAUDE_BIN || 'claude';
+
+function resolveClaudeExecutable() {
+  if (process.env.DWELL_CLAUDE_BIN) return process.env.DWELL_CLAUDE_BIN;
+  const candidates = [
+    ...String(process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, 'claude')),
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
+    path.join(process.env.HOME || '', '.local/bin/claude'),
+    path.join(process.env.HOME || '', '.npm-global/bin/claude'),
+  ];
+  for (const candidate of [...new Set(candidates)]) {
+    try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch {}
+  }
+  return 'claude';
+}
+
+const CLAUDE_BIN = resolveClaudeExecutable();
 const CLAUDE_TIMEOUT_MS = Number(process.env.DWELL_CLAUDE_TIMEOUT_MS || 15 * 60 * 1000);
 const CLAUDE_BARE = process.env.DWELL_CLAUDE_BARE === '1';
 const CLAUDE_SAFE_MODE = process.env.DWELL_CLAUDE_SAFE_MODE !== '0';
@@ -48,29 +64,13 @@ const CLAUDE_MODEL_OVERRIDE = String(process.env.DWELL_CLAUDE_MODEL || '').trim(
 const GONG_MODEL = process.env.DWELL_GONG_MODEL || 'haiku';
 const PERMISSION_MODE = process.env.DWELL_PERMISSION_MODE || 'acceptEdits';
 const AUTH_TOKEN = process.env.DWELL_AUTH_TOKEN || '';
-const SERVER_VERSION = '0.4.7';
+const SERVER_VERSION = '0.6.0';
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_TEXT = 600_000;
 const MAX_UPLOAD_CHUNK = 4 * 1024 * 1024;
 const MAX_UPLOAD_CHUNKS = 32;
 
-const files = {
-  state: path.join(DATA_DIR, 'state.json'),
-  messages: path.join(DATA_DIR, 'messages.jsonl'),
-  chats: path.join(DATA_DIR, 'chats.json'),
-  notes: path.join(DATA_DIR, 'notes.json'),
-  todos: path.join(DATA_DIR, 'todos.json'),
-  calendar: path.join(DATA_DIR, 'calendar.json'),
-  diary: path.join(DATA_DIR, 'diary.json'),
-  whisper: path.join(DATA_DIR, 'whisper.json'),
-  wall: path.join(DATA_DIR, 'wall.json'),
-  nook: path.join(DATA_DIR, 'nook.json'),
-  subscriptions: path.join(DATA_DIR, 'subscriptions.json'),
-  apiAuth: path.join(DATA_DIR, 'api-auth.json'),
-  gong: path.join(DATA_DIR, 'gong.json'),
-  feedback: path.join(DATA_DIR, 'message-feedback.json'),
-  favlines: path.join(DATA_DIR, 'favlines.md'),
-};
+const files = { favlines: path.join(DATA_DIR, 'favlines.md') };
 
 const defaultState = {
   model: 'default',
@@ -113,8 +113,11 @@ let persistQueue = Promise.resolve();
 let nextSeq = 0;
 let activeRun = null;
 let server;
+let database;
 const events = [];
 const EVENT_LIMIT = 5000;
+const sseClients = new Set();
+const SSE_HEARTBEAT_MS = 15_000;
 
 function now() { return Math.floor(Date.now() / 1000); }
 function id(prefix = 'id') { return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`; }
@@ -125,19 +128,6 @@ async function ensureDir(dir) { await fsp.mkdir(dir, { recursive: true }); }
 async function readJson(file, fallback) {
   try { return JSON.parse(await fsp.readFile(file, 'utf8')); }
   catch { return clone(fallback); }
-}
-
-async function readJsonl(file) {
-  try {
-    const text = await fsp.readFile(file, 'utf8');
-    const items = [];
-    for (const line of text.split('\n')) {
-      if (!line.trim()) continue;
-      try { items.push(JSON.parse(line)); }
-      catch { /* Keep valid history if the final line was interrupted by a crash. */ }
-    }
-    return items;
-  } catch { return []; }
 }
 
 function cnDate(sec = now()) {
@@ -305,7 +295,11 @@ async function syncNotificationFeed() {
   }
   const seenEntries = Object.entries(feed.taskSeen).sort((a, b) => Date.parse(b[1]) - Date.parse(a[1])).slice(0, 600);
   feed.taskSeen = Object.fromEntries(seenEntries);
-  if (added.length) await persistAll();
+  if (added.length) {
+    await persistAll();
+    for (const notification of added) emit({ type: 'notification', notification });
+    notifyWaiters();
+  }
   return added;
 }
 
@@ -347,7 +341,7 @@ function vapidPublicKey() {
   ecdh.generateKeys();
   state.vapidPrivate = ecdh.getPrivateKey().toString('base64url');
   state.vapidPublic = ecdh.getPublicKey().toString('base64url');
-  queuePersist(() => atomicJson(files.state, state));
+  queuePersist(() => database.saveState(clone(state)));
   return state.vapidPublic;
 }
 
@@ -388,56 +382,102 @@ function queuePersist(task) {
   return persistQueue;
 }
 
-async function atomicJson(file, value) {
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
-  await fsp.rename(tmp, file);
-}
-
-async function atomicJsonl(file, values) {
-  const tmp = `${file}.${process.pid}.tmp`;
-  const body = values.map(value => JSON.stringify(value)).join('\n');
-  await fsp.writeFile(tmp, body ? `${body}\n` : '', { mode: 0o600 });
-  await fsp.rename(tmp, file);
-}
-
 async function persistAll() {
   const snapshot = clone({
     state, chats, notes, todos, calendar, diary, whisper, wall, nook, subscriptions, apiAuth, gong, feedback,
   });
-  return queuePersist(async () => {
-    await Promise.all([
-      atomicJson(files.state, snapshot.state),
-      atomicJson(files.chats, snapshot.chats),
-      atomicJson(files.notes, snapshot.notes),
-      atomicJson(files.todos, snapshot.todos),
-      atomicJson(files.calendar, snapshot.calendar),
-      atomicJson(files.diary, snapshot.diary),
-      atomicJson(files.whisper, snapshot.whisper),
-      atomicJson(files.wall, snapshot.wall),
-      atomicJson(files.nook, snapshot.nook),
-      atomicJson(files.subscriptions, snapshot.subscriptions),
-      atomicJson(files.apiAuth, snapshot.apiAuth),
-      atomicJson(files.gong, snapshot.gong),
-      atomicJson(files.feedback, snapshot.feedback),
-    ]);
-  });
+  return queuePersist(() => database.saveSnapshot(snapshot));
 }
 
 async function appendMessage(record, chatId = state.activeChatId) {
   const item = { seq: ++nextSeq, at: now(), chatId, ...record };
   messages.push(item);
   if (item.kind === 'me') state.lastUserAt = item.at;
-  const line = JSON.stringify(item) + '\n';
-  queuePersist(() => fsp.appendFile(files.messages, line, { mode: 0o600 }));
+  queuePersist(() => database.appendMessage(item));
   return item;
 }
 
+function canonicalEvent(event, cursor) {
+  const chatId = event.chat_id || activeRun?.chatId || state.activeChatId || '';
+  const base = { id: cursor, at: now(), chat_id: chatId };
+  if (event.type === 'echo') return { ...base, type: 'message.created', data: { role: 'user', message_id: event.seq || null, text: event.text || '', at: event.at || now() } };
+  if (event.type === 'stream_event') {
+    const delta = event.event?.delta || {};
+    if (delta.type === 'thinking_delta') return { ...base, type: 'thought.delta', data: { text: String(delta.thinking || '') } };
+    if (delta.type === 'text_delta') return { ...base, type: 'assistant.delta', data: { text: String(delta.text || ''), synthetic: !!event.synthetic } };
+  }
+  if (event.type === 'assistant') return {
+    ...base,
+    type: 'assistant.message',
+    data: { message_id: event.dwell_message_id || null, at: event.dwell_at || now(), message: event.message || {} },
+  };
+  if (event.type === 'result') return {
+    ...base,
+    type: event.is_error ? 'assistant.failed' : 'assistant.completed',
+    data: { error: !!event.is_error, text: String(event.result || ''), notification_id: event.notification_id || 0 },
+  };
+  if (event.type === 'system') {
+    const names = {
+      newchat: 'chat.started', stopped: 'assistant.stopped', model: 'model.changed',
+      regenerate: 'assistant.regenerated', switched: 'chat.switched', restart: 'backend.restarted',
+    };
+    return { ...base, type: names[event.subtype] || 'system.event', data: { ...event, type: undefined } };
+  }
+  if (event.type === 'notification') return { ...base, type: 'notification.created', data: event.notification || event };
+  if (event.type === 'task') return { ...base, type: `task.${event.subtype || 'updated'}`, data: event.task || event };
+  return { ...base, type: 'claude.event', data: event };
+}
+
+function writeSse(res, event) {
+  if (res.destroyed || res.writableEnded) return false;
+  try {
+    res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    return true;
+  } catch { return false; }
+}
+
+function broadcastSse(event) {
+  for (const client of [...sseClients]) if (!writeSse(client.res, event)) sseClients.delete(client);
+}
+
 function emit(event) {
-  const item = { ...event, _cursor: ++nextSeq };
+  const cursor = ++nextSeq;
+  const canonical = canonicalEvent(event, cursor);
+  const item = { ...event, _cursor: cursor, _v2: canonical };
   events.push(item);
   if (events.length > EVENT_LIMIT) events.splice(0, events.length - EVENT_LIMIT);
+  broadcastSse(canonical);
   return item;
+}
+
+function serveEventStream(req, res, url, origin) {
+  const requested = Number(req.headers['last-event-id'] || url.searchParams.get('since') || 0);
+  const since = Number.isFinite(requested) && requested > 0 ? requested : 0;
+  res.writeHead(200, {
+    ...headers(origin),
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 3000\n\n');
+  res.flushHeaders?.();
+  const earliest = events[0]?._cursor || nextSeq;
+  if (since > 0 && since < earliest - 1) {
+    writeSse(res, { id: nextSeq, at: now(), chat_id: state.activeChatId || '', type: 'resync.required', data: { reason: 'cursor_expired' } });
+  } else {
+    for (const event of events) if (event._cursor > since) writeSse(res, event._v2);
+  }
+  const client = { res };
+  sseClients.add(client);
+  const heartbeat = setInterval(() => {
+    if (res.destroyed || res.writableEnded) return cleanup();
+    try { res.write(`: heartbeat ${Date.now()}\n\n`); } catch { cleanup(); }
+  }, SSE_HEARTBEAT_MS);
+  heartbeat.unref();
+  const cleanup = () => { clearInterval(heartbeat); sseClients.delete(client); };
+  req.once('close', cleanup);
+  res.once('close', cleanup);
 }
 
 function notifyWaiters() {
@@ -464,7 +504,13 @@ function waitForEvent(timeoutMs = 25000) {
 
 async function load() {
   await Promise.all([ensureDir(UPLOAD_DIR), ensureDir(NEWS_DIR), ensureDir(BOOKS_DIR)]);
-  state = { ...defaultState, ...(await readJson(files.state, {})) };
+  database = await openDwellDatabase({
+    dataDir: DATA_DIR,
+    defaults: { state: defaultState, apiAuth: { mode: 'subscription', base: '', models: {} } },
+  });
+  if (database.migration) console.log(`[dwell] migrated legacy data to SQLite; backup: ${database.migration.backup}`);
+  const stored = database.loadSnapshot();
+  state = { ...defaultState, ...(stored.state || {}) };
   state.health = { ...defaultState.health, ...(state.health || {}) };
   state.usage = { ...defaultState.usage, ...(state.usage || {}) };
   state.notifications = { ...defaultState.notifications, ...(state.notifications || {}) };
@@ -473,26 +519,26 @@ async function load() {
   state.usage.days ||= {};
   state.usage.last ||= {};
   state.healthToken = state.healthToken || process.env.DWELL_HEALTH_TOKEN || crypto.randomBytes(18).toString('base64url');
-  chats = await readJson(files.chats, []);
-  notes = await readJson(files.notes, { gu: [], her: [] });
-  todos = await readJson(files.todos, { mine: [], hers: [] });
+  chats = stored.chats || [];
+  notes = stored.notes || { gu: [], her: [] };
+  todos = stored.todos || { mine: [], hers: [] };
   todos = { mine: todos.mine || [], hers: todos.hers || todos.yours || [] };
-  calendar = await readJson(files.calendar, { events: [], period: { days: {} } });
+  calendar = stored.calendar || { events: [], period: { days: {} } };
   calendar.events ||= [];
   calendar.period ||= { days: {} };
   calendar.period.days ||= {};
-  diary = await readJson(files.diary, []);
-  whisper = await readJson(files.whisper, []);
-  wall = await readJson(files.wall, []);
-  nook = await readJson(files.nook, { books: [], progress: {}, annotations: {} });
-  subscriptions = await readJson(files.subscriptions, []);
-  apiAuth = await readJson(files.apiAuth, { mode: 'subscription', base: '', models: {} });
+  diary = stored.diary || [];
+  whisper = stored.whisper || [];
+  wall = stored.wall || [];
+  nook = stored.nook || { books: [], progress: {}, annotations: {} };
+  subscriptions = stored.subscriptions || [];
+  apiAuth = stored.apiAuth || { mode: 'subscription', base: '', models: {} };
   const availableModelIds = new Set(modelCatalog().items.map(item => item.id));
   if (!availableModelIds.has(state.model)) state.model = modelCatalog().items[0]?.id || 'default';
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(state.effort)) state.effort = 'high';
-  gong = await readJson(files.gong, []);
-  feedback = await readJson(files.feedback, {});
-  messages = await readJsonl(files.messages);
+  gong = stored.gong || [];
+  feedback = stored.feedback || {};
+  messages = stored.messages || [];
   nextSeq = Math.max(
     messages.reduce((n, item) => Math.max(n, Number(item.seq) || 0), 0),
     Number(state.notifications.next) || 0,
@@ -520,7 +566,7 @@ async function load() {
     migratedMessages = true;
     return { ...message, chatId: legacyChatId };
   });
-  if (migratedMessages) await atomicJsonl(files.messages, messages);
+  if (migratedMessages) database.replaceMessages(messages);
   state.busy = false;
   state.startedAt = now();
   if (!state.lastUserAt) state.lastUserAt = messages.filter(x => x.kind === 'me').reduce((n, x) => Math.max(n, x.at || 0), 0);
@@ -553,13 +599,16 @@ function contentType(file) {
 }
 
 function headers(origin) {
-  const allowed = process.env.DWELL_ALLOW_ORIGINS || '*';
+  const allowed = String(process.env.DWELL_ALLOW_ORIGINS || 'https://appassets.androidplatform.net,null')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  const allowOrigin = origin && allowed.includes(origin) ? origin : (!origin ? allowed[0] : 'null');
   return {
-    'Access-Control-Allow-Origin': allowed === '*' ? '*' : (origin && allowed.split(',').map(x => x.trim()).includes(origin) ? origin : allowed.split(',')[0]),
+    'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Dwell-Token',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Max-Age': '86400',
     'Cache-Control': 'no-store',
+    Vary: 'Origin',
   };
 }
 
@@ -573,10 +622,43 @@ function send(res, status, body, extra = {}) {
 function ok(res, body = { ok: true }, origin) { send(res, 200, body, { origin }); }
 function bad(res, status, error, origin, detail = '') { send(res, status, { ok: false, error, ...(detail ? { detail } : {}) }, { origin }); }
 
-function authorized(req) {
-  if (!AUTH_TOKEN) return true;
-  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '') || req.headers['x-dwell-token'];
-  return token === AUTH_TOKEN;
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left || ''));
+  const b = Buffer.from(String(right || ''));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function tokenHash(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function requestToken(req) {
+  return String(req.headers.authorization || '').replace(/^(?:Bearer|DwellDevice)\s+/i, '')
+    || String(req.headers['x-dwell-token'] || '');
+}
+
+const deviceTouchAt = new Map();
+function authenticate(req, { allowOpenLegacy = false } = {}) {
+  const token = requestToken(req);
+  if (AUTH_TOKEN && token && safeEqual(token, AUTH_TOKEN)) return { kind: 'legacy', deviceId: 'legacy' };
+  if (token) {
+    const device = database.activeDeviceByTokenHash(tokenHash(token));
+    if (device) {
+      const at = now();
+      if (at - Number(deviceTouchAt.get(device.id) || 0) > 60) {
+        database.touchDevice(device.id, at);
+        deviceTouchAt.set(device.id, at);
+      }
+      return { kind: 'device', deviceId: device.id, device };
+    }
+  }
+  if (!AUTH_TOKEN && allowOpenLegacy) return { kind: 'open', deviceId: 'legacy-open' };
+  return null;
+}
+
+function localRequest(req) {
+  const address = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  return address === '127.0.0.1' || address === '::1';
 }
 
 async function bodyBuffer(req, limit = MAX_BODY) {
@@ -615,7 +697,7 @@ function recordUsage(raw = {}, cost = 0, failed = false) {
   state.usage.last = { input, output, cacheRead, cacheWrite, at: now(), model: state.model };
   const keep = Object.keys(state.usage.days).sort().slice(-35);
   state.usage.days = Object.fromEntries(keep.map(key => [key, state.usage.days[key]]));
-  queuePersist(() => atomicJson(files.state, state));
+  queuePersist(() => database.saveState(clone(state)));
 }
 
 function contextView() {
@@ -869,6 +951,13 @@ function providerErrorText(data) {
   return String(error.message || error.type || '备用 API 返回错误');
 }
 
+function assistantMetadata(run) {
+  return {
+    ...(Number.isFinite(run.userSeq) && run.userSeq < Number.MAX_SAFE_INTEGER ? { replyTo: run.userSeq } : {}),
+    ...(run.variantOf ? { variantOf: run.variantOf, version: run.variantVersion } : {}),
+  };
+}
+
 async function runApiProvider(prompt, attachments, run) {
   const request = providerRequest(apiAuth.base, prompt, attachments, true, '', run);
   const headers = providerHeaders(request.kind, apiAuth.token, true);
@@ -890,7 +979,7 @@ async function runApiProvider(prompt, attachments, run) {
     if (!text) throw new Error('备用 API 没有返回文本');
     if (text) {
       await emitProgressiveText(text, run);
-      const saved = await appendMessage({ kind: 'gu', text }, run.chatId);
+      const saved = await appendMessage({ kind: 'gu', text, ...assistantMetadata(run) }, run.chatId);
       run.lastMessageSeq = saved.seq;
       run.notificationId = recordChatNotification(saved);
       emit({ type: 'assistant', message: { content: [{ type: 'text', text }] }, dwell_message_id: saved.seq, dwell_at: saved.at });
@@ -931,7 +1020,7 @@ async function runApiProvider(prompt, attachments, run) {
   if (run.providerError) throw new Error(run.providerError);
   if (!text.trim()) throw new Error('备用 API 没有返回文本');
   if (text.trim()) {
-    const saved = await appendMessage({ kind: 'gu', text: text.trim() }, run.chatId);
+    const saved = await appendMessage({ kind: 'gu', text: text.trim(), ...assistantMetadata(run) }, run.chatId);
     run.lastMessageSeq = saved.seq;
     run.notificationId = recordChatNotification(saved);
     emit({ type: 'assistant', message: { content: [{ type: 'text', text: text.trim() }] }, dwell_message_id: saved.seq, dwell_at: saved.at });
@@ -1059,7 +1148,7 @@ async function runClaude(prompt, attachments, run) {
       if (state.activeChatId === run.chatId) state.sessionId = data.session_id;
       const chat = chatRecord(run.chatId);
       if (chat) chat.sessionId = data.session_id;
-      queuePersist(() => atomicJson(files.state, state));
+      queuePersist(() => database.saveState(clone(state)));
     }
     if (data.type === 'result') {
       run.hadResult = true;
@@ -1085,7 +1174,7 @@ async function runClaude(prompt, attachments, run) {
         if (part.kind === 'think' && part.text) await appendMessage(part, run.chatId);
         if (part.kind === 'gu' && part.text) {
           if (!sawTextDelta) await emitProgressiveText(part.text, run);
-          const saved = await appendMessage(part, run.chatId);
+          const saved = await appendMessage({ ...part, ...assistantMetadata(run) }, run.chatId);
           run.lastMessageSeq = saved.seq;
           run.notificationId = recordChatNotification(saved);
           data.dwell_message_id = saved.seq;
@@ -1116,7 +1205,7 @@ async function runClaude(prompt, attachments, run) {
   }
   if (!sawAssistant && finalThinking.trim()) await appendMessage({ kind: 'think', text: finalThinking.trim() }, run.chatId);
   if (!sawAssistant && finalText.trim()) {
-    const saved = await appendMessage({ kind: 'gu', text: finalText.trim() }, run.chatId);
+    const saved = await appendMessage({ kind: 'gu', text: finalText.trim(), ...assistantMetadata(run) }, run.chatId);
     run.lastMessageSeq = saved.seq;
     run.notificationId = recordChatNotification(saved);
   }
@@ -1196,7 +1285,14 @@ async function startTurn(text, attachments = [], options = {}) {
   if (chat) { chat.last = now(); chat.preview = userText || '（附件）'; }
   state.busy = true;
   await persistAll();
-  const run = { child: null, controller: null, timeout: null, timedOut: false, stopped: false, superseded: false, silent: !!options.silent, started: Date.now(), chatId: turnChatId, userSeq: userMessage?.seq || Number(options.userSeq) || Number.MAX_SAFE_INTEGER, notificationId: 0 };
+  const run = {
+    child: null, controller: null, timeout: null, timedOut: false, stopped: false,
+    superseded: false, silent: !!options.silent, started: Date.now(), chatId: turnChatId,
+    userSeq: userMessage?.seq || Number(options.userSeq) || Number.MAX_SAFE_INTEGER,
+    notificationId: 0,
+    variantOf: Number(options.variantOf) || 0,
+    variantVersion: Number(options.variantVersion) || 0,
+  };
   activeRun = run;
   const runner = apiAuth.mode === 'api' && apiAuth.base ? runApiProvider : runClaude;
   runner(runnerText, attachments, run).catch(error => {
@@ -1280,7 +1376,7 @@ async function importClaudeCodeHistory(externalId) {
     known.add(record.sourceUuid);
     changed = true;
   }
-  if (changed) await atomicJsonl(files.messages, messages);
+  if (changed) database.replaceMessages(messages);
   return chat;
 }
 
@@ -1368,6 +1464,253 @@ async function handleNook(method, parts, req) {
   return { ok: false, error: 'not_found' };
 }
 
+function messagesForChat(chatId, before = 0, limit = 200) {
+  const sorted = messages.filter(item => item.chatId === chatId).sort((a, b) => a.seq - b.seq);
+  const filtered = before ? sorted.filter(item => item.seq < before) : sorted;
+  const page = filtered.slice(-Math.min(Math.max(Number(limit) || 200, 1), 400));
+  return {
+    ok: true,
+    chat_id: chatId,
+    items: page.map(item => ({ ...item, feedback: feedback[String(item.seq)] || '' })),
+    more: filtered.length > page.length,
+    next_before: page[0]?.seq || 0,
+    upto: sorted.at(-1)?.seq || 0,
+  };
+}
+
+function pairingCodeHash(code) {
+  return crypto.createHash('sha256').update(`dwell-pair-v1:${code}`).digest('hex');
+}
+
+function mutationId(data) {
+  const value = String(data?.mutation_id || '').trim();
+  return /^[a-zA-Z0-9:_-]{8,120}$/.test(value) ? value : '';
+}
+
+async function withMutationReceipt(auth, data, operation) {
+  const key = mutationId(data);
+  if (!key) return operation();
+  const previous = database.mutationReceipt(key, auth.deviceId);
+  if (previous) return { ...previous, replayed: true };
+  const result = await operation();
+  database.saveMutationReceipt({ mutationId: key, deviceId: auth.deviceId, createdAt: now(), result });
+  return result;
+}
+
+async function beginRegeneration(target) {
+  const explicitReply = Number(target.replyTo) || 0;
+  const previous = explicitReply
+    ? messages.find(item => item.seq === explicitReply && item.chatId === target.chatId && item.kind === 'me')
+    : messages.filter(item => item.chatId === target.chatId && item.kind === 'me' && item.seq < target.seq).at(-1);
+  if (!previous) return { ok: false, status: 400, error: 'original_prompt_not_found' };
+  const root = Number(target.variantOf) || Number(target.seq);
+  const versions = messages
+    .filter(item => item.chatId === target.chatId && (Number(item.seq) === root || Number(item.variantOf) === root))
+    .map(item => Number(item.version) || (Number(item.seq) === root ? 1 : 0));
+  const version = Math.max(1, ...versions) + 1;
+  const chat = chatRecord(target.chatId);
+  if (chat) chat.sessionId = null;
+  if (state.activeChatId === target.chatId) state.sessionId = null;
+  await persistAll();
+  emit({ type: 'system', subtype: 'regenerate', chat_id: target.chatId, message_id: root, version });
+  notifyWaiters();
+  await startTurn(previous.text, [], {
+    webSearch: false, recordUser: false, regenerate: true, userSeq: previous.seq,
+    variantOf: root, variantVersion: version,
+  });
+  return { ok: true, source_message_id: root, version };
+}
+
+async function handleApiV2(req, res, url, origin, auth) {
+  const method = req.method || 'GET';
+  const pathname = url.pathname.replace(/^\/api\/v2\/?/, '').replace(/\/$/, '');
+  const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const route = parts.join('/');
+
+  if (method === 'GET' && route === 'health') {
+    return ok(res, { ok: true, service: 'dwell', api: 2, version: SERVER_VERSION, alive: true }, origin);
+  }
+  if (method === 'POST' && route === 'pairing/code') {
+    if (!localRequest(req) && auth?.kind !== 'legacy') return bad(res, 403, 'local_request_required', origin);
+    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+    const expiresAt = now() + 5 * 60;
+    database.createPairingCode({ codeHash: pairingCodeHash(code), expiresAt });
+    return ok(res, { ok: true, code, expires_at: expiresAt, expires_in: 300 }, origin);
+  }
+  if (method === 'POST' && route === 'pair') {
+    const data = await bodyJson(req);
+    const code = String(data.code || '').replace(/\s+/g, '');
+    if (!/^\d{6}$/.test(code)) return bad(res, 400, 'invalid_pairing_code', origin);
+    const at = now();
+    if (!database.consumePairingCode({ codeHash: pairingCodeHash(code), usedAt: at })) {
+      return bad(res, 401, 'pairing_code_expired_or_used', origin);
+    }
+    const token = crypto.randomBytes(32).toString('base64url');
+    const device = {
+      id: id('device'),
+      name: String(data.name || 'Android').trim().slice(0, 60) || 'Android',
+      tokenHash: tokenHash(token),
+      publicKey: String(data.public_key || '').slice(0, 1000),
+      createdAt: at,
+      lastSeenAt: at,
+    };
+    database.addDevice(device);
+    return ok(res, { ok: true, device: { id: device.id, name: device.name, created_at: at }, token }, origin);
+  }
+  if (!auth) return bad(res, 401, 'device_pairing_required', origin);
+
+  if (method === 'GET' && route === 'events') return serveEventStream(req, res, url, origin);
+  if (method === 'GET' && route === 'bootstrap') {
+    return ok(res, {
+      ok: true,
+      version: SERVER_VERSION,
+      server_time: now(),
+      status: { busy: !!activeRun || !!state.busy, armed: !!state.armed, active_chat_id: state.activeChatId, workspace: WORKSPACE, claude: CLAUDE_BIN },
+      model: modelView(),
+      chats: await chatItems('all'),
+      messages: messagesForChat(state.activeChatId, 0, 120),
+      capabilities: { sse: true, pairing: true, tasks: true, voice: 'android-native', notifications: 'workmanager' },
+    }, origin);
+  }
+  if (method === 'GET' && route === 'devices') return ok(res, { ok: true, items: database.listDevices() }, origin);
+  if (method === 'POST' && parts[0] === 'devices' && parts[2] === 'revoke') {
+    const target = parts[1];
+    if (auth.kind === 'device' && target !== auth.deviceId) return bad(res, 403, 'cannot_revoke_other_device', origin);
+    return ok(res, { ok: true, revoked: database.revokeDevice(target, now()) }, origin);
+  }
+  if (method === 'GET' && route === 'chats') {
+    return ok(res, { ok: true, active_chat_id: state.activeChatId, armed: !!state.armed, items: await chatItems(url.searchParams.get('scope') || 'all') }, origin);
+  }
+  if (method === 'GET' && parts[0] === 'chats' && parts[2] === 'messages') {
+    let chat = chats.find(item => item.id === parts[1]);
+    if (!chat && parts[1].startsWith('claude:')) chat = await importClaudeCodeHistory(parts[1]);
+    if (!chat) return bad(res, 404, 'chat_not_found', origin);
+    return ok(res, messagesForChat(chat.id, Number(url.searchParams.get('before') || 0), Number(url.searchParams.get('limit') || 200)), origin);
+  }
+  if (method === 'POST' && parts[0] === 'chats' && parts[2] === 'activate') {
+    let chat = chats.find(item => item.id === parts[1]);
+    if (!chat && parts[1].startsWith('claude:')) chat = await importClaudeCodeHistory(parts[1]);
+    if (!chat) return bad(res, 404, 'chat_not_found', origin);
+    if (activeRun && activeRun.chatId !== chat.id) { activeRun.superseded = true; stopRun(); }
+    state.armed = false;
+    state.activeChatId = chat.id;
+    state.sessionId = chat.sessionId || null;
+    chats = chats.map(item => ({ ...item, current: item.id === chat.id }));
+    await persistAll();
+    emit({ type: 'system', subtype: 'switched', chat_id: chat.id });
+    return ok(res, { ok: true, chat, messages: messagesForChat(chat.id, 0, 200) }, origin);
+  }
+  if (method === 'POST' && route === 'chats/new') {
+    const data = await bodyJson(req);
+    const result = await withMutationReceipt(auth, data, async () => {
+      if (activeRun) { activeRun.superseded = true; stopRun(); }
+      state.armed = true;
+      state.sessionId = null;
+      chats = chats.map(chat => ({ ...chat, current: false }));
+      await persistAll();
+      return { ok: true, armed: true };
+    });
+    return ok(res, result, origin);
+  }
+  if (method === 'POST' && route === 'chat/send') {
+    const data = await bodyJson(req);
+    const result = await withMutationReceipt(auth, data, async () => {
+      const text = String(data.text || '').trim();
+      if (!text && !(data.attachments || []).length) return { ok: false, error: 'empty_message' };
+      await startTurn(text, data.attachments || [], { webSearch: !!data.web_search });
+      return { ok: true, accepted_at: now(), chat_id: state.activeChatId };
+    });
+    return result.ok === false ? bad(res, 400, result.error, origin) : ok(res, result, origin);
+  }
+  if (method === 'POST' && route === 'chat/stop') return ok(res, { ok: true, stopped: stopRun() }, origin);
+  if (method === 'POST' && route === 'chat/regenerate') {
+    const data = await bodyJson(req);
+    const target = messages.find(item => String(item.seq) === String(data.message_id || '') && item.kind === 'gu');
+    if (!target) return bad(res, 404, 'message_not_found', origin);
+    if (activeRun) return bad(res, 409, 'busy', origin);
+    const result = await withMutationReceipt(auth, data, () => beginRegeneration(target));
+    return result.ok ? ok(res, result, origin) : bad(res, result.status || 400, result.error, origin);
+  }
+  if (method === 'POST' && route === 'message-feedback') {
+    const data = await bodyJson(req);
+    const messageId = String(data.message_id || '');
+    const value = ['', 'up', 'down'].includes(String(data.value || '')) ? String(data.value || '') : '';
+    const message = messages.find(item => String(item.seq) === messageId && item.kind === 'gu');
+    if (!message) return bad(res, 404, 'message_not_found', origin);
+    if (value) feedback[messageId] = value;
+    else delete feedback[messageId];
+    await persistAll();
+    emit({ type: 'system', subtype: 'feedback', chat_id: message.chatId, message_id: message.seq, value });
+    return ok(res, { ok: true, message_id: message.seq, value }, origin);
+  }
+  if (method === 'POST' && parts[0] === 'chats' && parts.length === 2) {
+    const data = await bodyJson(req);
+    let chat = chats.find(item => item.id === parts[1]);
+    if (!chat && parts[1].startsWith('claude:')) chat = await importClaudeCodeHistory(parts[1]);
+    if (!chat) return bad(res, 404, 'chat_not_found', origin);
+    if (data.action === 'rename') {
+      const name = String(data.name || '').trim().slice(0, 80);
+      if (!name) return bad(res, 400, 'name_required', origin);
+      chat.name = name;
+    } else if (data.action === 'archive' || data.action === 'restore') {
+      chat.archived = data.action === 'archive';
+      if (chat.archived && chat.id === state.activeChatId && !state.armed) {
+        if (activeRun?.chatId === chat.id) { activeRun.superseded = true; stopRun(); }
+        state.armed = true;
+        state.sessionId = null;
+      }
+    } else {
+      return bad(res, 400, 'unsupported_chat_action', origin);
+    }
+    chat.last = Math.max(Number(chat.last || 0), now());
+    chats = chats.map(item => ({ ...item, current: !state.armed && item.id === state.activeChatId }));
+    await persistAll();
+    emit({ type: 'system', subtype: 'chat_updated', chat_id: chat.id, action: data.action });
+    return ok(res, { ok: true, active_chat_id: state.activeChatId, armed: !!state.armed, items: await chatItems('all') }, origin);
+  }
+  if (method === 'GET' && route === 'model') return ok(res, modelView(), origin);
+  if (method === 'POST' && route === 'model') {
+    const data = await bodyJson(req);
+    const catalog = modelCatalog();
+    const nextModel = String(data.model || state.model).slice(0, 200);
+    const nextEffort = String(data.effort || state.effort);
+    if (!catalog.items.some(item => item.id === nextModel)) return bad(res, 400, 'model_not_available', origin);
+    if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(nextEffort)) return bad(res, 400, 'effort_not_available', origin);
+    const changed = nextModel !== state.model || nextEffort !== state.effort;
+    state.model = nextModel;
+    state.effort = nextEffort;
+    if (changed) {
+      const chat = activeChatRecord();
+      if (chat) chat.sessionId = null;
+      state.sessionId = null;
+      emit({ type: 'system', subtype: 'model', model: state.model, effort: state.effort });
+    }
+    await persistAll();
+    return ok(res, modelView(), origin);
+  }
+  if (method === 'GET' && route === 'tasks') return ok(res, await listDesktopTasks(), origin);
+  if (method === 'GET' && parts[0] === 'tasks' && parts.length === 2) {
+    const result = await desktopTaskDetail(parts[1]);
+    return result.ok ? ok(res, result, origin) : bad(res, result.status || 404, result.error, origin);
+  }
+  if (method === 'GET' && parts[0] === 'tasks' && parts[2] === 'runs' && parts.length === 4) {
+    const result = await desktopTaskRunDetail(parts[1], parts[3]);
+    return result.ok ? ok(res, result, origin) : bad(res, result.status || 404, result.error, origin);
+  }
+  if (method === 'POST' && parts[0] === 'tasks' && parts[2] === 'actions' && parts.length === 4) {
+    const result = await controlDesktopTask(parts[3], parts[1]);
+    if (!result.ok) return bad(res, result.status || 502, result.error, origin, result.detail || '');
+    emit({ type: 'task', subtype: 'updated', task: { id: parts[1], action: parts[3], result } });
+    return ok(res, result, origin);
+  }
+  if (method === 'GET' && route === 'notifications') {
+    const since = Math.max(Number(url.searchParams.get('since') || 0), 0);
+    await syncNotificationFeed();
+    return ok(res, { ok: true, next: Number(state.notifications.next) || since, items: state.notifications.items.filter(item => Number(item.id) > since).slice(-50) }, origin);
+  }
+  return bad(res, 404, 'not_found', origin);
+}
+
 async function handleApi(req, res, url, origin) {
   const method = req.method || 'GET';
   const pathname = url.pathname.replace(/^\/api\/?/, '').replace(/\/$/, '');
@@ -1394,25 +1737,8 @@ async function handleApi(req, res, url, origin) {
     const target = messages.find(item => String(item.seq) === String(data.message_id || '') && item.kind === 'gu');
     if (!target) return bad(res, 404, 'message_not_found', origin);
     if (activeRun) return bad(res, 409, 'busy', origin);
-    const previous = messages.filter(item => item.chatId === target.chatId && item.kind === 'me' && item.seq < target.seq).at(-1);
-    if (!previous) return bad(res, 400, 'original_prompt_not_found', origin);
-    // Regeneration starts a new branch at the original user turn. Keeping later
-    // turns would make the regenerated answer appear at the end of the chat and
-    // would also feed unrelated follow-up questions back into the model.
-    const removed = messages.filter(item => item.chatId === target.chatId && item.seq > previous.seq);
-    const removedIds = new Set(removed.map(item => String(item.seq)));
-    messages = messages.filter(item => !removedIds.has(String(item.seq)));
-    for (const messageId of removedIds) delete feedback[messageId];
-    state.notifications.items = state.notifications.items.filter(item => {
-      if (item.kind !== 'chat') return true;
-      return !removedIds.has(String(item.key || '').replace(/^chat:/, ''));
-    });
-    await queuePersist(() => atomicJsonl(files.messages, messages));
-    await persistAll();
-    emit({ type: 'system', subtype: 'regenerate', message_id: target.seq, removed: [...removedIds] });
-    notifyWaiters();
-    await startTurn(previous.text, [], { webSearch: false, recordUser: false, regenerate: true, userSeq: previous.seq });
-    return ok(res, { ok: true, source_message_id: target.seq, removed: [...removedIds] }, origin);
+    const result = await beginRegeneration(target);
+    return result.ok ? ok(res, result, origin) : bad(res, result.status || 400, result.error, origin);
   }
   if (route === 'desktop-tasks' && method === 'GET') return ok(res, await listDesktopTasks(), origin);
   if (parts[0] === 'desktop-tasks' && parts.length === 2 && method === 'GET') {
@@ -1432,7 +1758,7 @@ async function handleApi(req, res, url, origin) {
   }
   if (route === 'poll' && method === 'GET') {
     const since = Number(url.searchParams.get('since') || 0);
-    const get = () => events.filter(item => item._cursor > since).map(({ _cursor, ...event }) => event);
+    const get = () => events.filter(item => item._cursor > since).map(({ _cursor, _v2, ...event }) => event);
     let fresh = get();
     if (!fresh.length && url.searchParams.get('wait') !== '0') {
       await waitForEvent();
@@ -1727,8 +2053,18 @@ async function handle(req, res) {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'OPTIONS') { res.writeHead(204, headers(origin)); return res.end(); }
   const independentHealthUpload = req.method === 'POST' && url.pathname.replace(/\/$/, '') === '/api/health';
-  if (url.pathname.startsWith('/api/') && !independentHealthUpload && !authorized(req)) return bad(res, 401, 'unauthorized', origin);
   try {
+    if (url.pathname.startsWith('/api/v2/')) {
+      const publicV2 = new Set(['/api/v2/health', '/api/v2/pair']);
+      const auth = authenticate(req);
+      if (!publicV2.has(url.pathname.replace(/\/$/, '')) && url.pathname.replace(/\/$/, '') !== '/api/v2/pairing/code' && !auth) {
+        return bad(res, 401, 'device_pairing_required', origin);
+      }
+      return await handleApiV2(req, res, url, origin, auth);
+    }
+    if (url.pathname.startsWith('/api/') && !independentHealthUpload && !authenticate(req, { allowOpenLegacy: true })) {
+      return bad(res, 401, 'unauthorized', origin);
+    }
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url, origin);
     return await serveStatic(req, res, url, origin);
   } catch (error) {
@@ -1741,6 +2077,10 @@ async function handle(req, res) {
 await load();
 const wakeTimer = setInterval(() => { wakeTick().catch(error => console.error('[dwell] wake:', error.message)); }, 90 * 1000);
 wakeTimer.unref();
+const notificationTimer = setInterval(() => {
+  syncNotificationFeed().catch(error => console.error('[dwell] notifications:', error.message));
+}, 45 * 1000);
+notificationTimer.unref();
 server = http.createServer((req, res) => { handle(req, res).catch(error => { console.error('[dwell] unhandled:', error); if (!res.headersSent) bad(res, 500, 'server_error', req.headers.origin || ''); }); });
 server.requestTimeout = 30 * 60 * 1000;
 server.headersTimeout = 30 * 1000;
@@ -1753,8 +2093,15 @@ server.listen(PORT, HOST, () => {
 
 async function shutdown(signal) {
   console.log(`[dwell] ${signal}, stopping`);
+  clearInterval(wakeTimer);
+  clearInterval(notificationTimer);
+  for (const client of sseClients) {
+    try { client.res.end(); } catch {}
+  }
+  sseClients.clear();
   stopRun();
   await persistQueue;
+  try { database?.close(); } catch (error) { console.error('[dwell] sqlite close:', error.message); }
   server?.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }

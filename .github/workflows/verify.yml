@@ -1,0 +1,35 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Backend checks
+        working-directory: backend
+        run: npm run check && npm test
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Android tests, lint and unsigned release
+        working-directory: android
+        run: ./gradlew testDebugUnitTest lintDebug assembleRelease --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dwell-unsigned-release
+          path: android/app/build/outputs/apk/release/*.apk

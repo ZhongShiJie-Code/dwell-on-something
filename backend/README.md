@@ -10,7 +10,13 @@ npm install
 DWELL_HOST=0.0.0.0 DWELL_PORT=8787 npm start
 ```
 
-浏览器打开 `http://127.0.0.1:8787/` 可以直接使用同源前端。手机安装 APK 后，在「设置 → 接入 API」里填 Mac 的局域网地址，例如：
+浏览器打开 `http://127.0.0.1:8787/` 可以直接使用同源前端。服务启动后先生成一次性配对码：
+
+```bash
+npm run pair
+```
+
+手机安装 APK 后，在首次配对页填六位码、Mac 的局域网地址和 Cloudflare 地址，例如：
 
 ```text
 http://192.168.1.10:8787
@@ -26,7 +32,8 @@ Mac 和手机必须在同一个 Wi‑Fi。macOS 防火墙如果拦截 Node，要
 
 手机在「设置 → 接入 API」同时填写局域网地址和 Cloudflare 地址。应用会并行探测两者，局域网健康时优先局域网，否则使用 Cloudflare；两个地址都不可用时继续显示手机上次成功保存的离线快照。
 
-`DWELL_AUTH_TOKEN` 是 Dwell 自己的第二道门，不能把它写进仓库、APK 或 Tunnel 配置：
+`DWELL_AUTH_TOKEN` 是旧 Web 客户端兼容入口，不能把它写进仓库、APK 或 Tunnel 配置。v0.6.0 手机完成配对后使用
+独立的随机设备令牌，服务端只保存哈希，手机使用 Android Keystore；旧 token 可保留给同源管理页面：
 
 ```bash
 cd backend
@@ -59,6 +66,19 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 | `DWELL_PERMISSION_MODE` | `acceptEdits` | Claude Code 权限模式 |
 | `DWELL_VAPID_EMAIL` | `mailto:dwell@localhost` | Web Push 的 VAPID 联系地址 |
 
+## v0.6.0 数据迁移
+
+首次使用新版后端时会把结构化 JSON/JSONL 在单个事务中迁入 `backend/data/dwell.sqlite`，启用 WAL、外键和 busy timeout。
+迁移前自动建立 `backend/data/backups/pre-v060-*`，旧文件不会删除；校验失败则不安装半成品数据库。启动前可先运行：
+
+```bash
+npm run check
+npm test
+```
+
+Android 原生客户端使用 `/api/v2/*` 和 `/api/v2/events`；旧网页继续走 `/api/*` 兼容路由。Claude CLI 未在 LaunchAgent 的
+`PATH` 中时，后端会解析 `DWELL_CLAUDE_BIN` 或常见绝对路径，避免 `spawn claude ENOENT`。
+
 数据目录已被 Git 忽略，令牌不会提交到仓库。生产或跨网络访问时应使用 HTTPS/VPN，并设置 `DWELL_AUTH_TOKEN`；局域网调试才使用 APK 支持的 HTTP。
 
 ## 已接入的真实能力
@@ -86,6 +106,7 @@ DWELL_HOST=127.0.0.1 DWELL_PORT=8787 DWELL_AUTH_TOKEN='只在 Mac 环境变量�
 
 ```bash
 npm run check
+npm test
 ```
 
 完整冒烟测试需要先用独立测试数据目录启动服务，再在另一个终端执行；它会测试窗口隔离、待办、日历、上传、通知接口，以及模拟的 OpenAI/Anthropic 通道：
