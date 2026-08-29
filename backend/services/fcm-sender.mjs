@@ -72,6 +72,31 @@ function classify(error) {
   return 'sender_error';
 }
 
+function isControlCharacter(character) {
+  const codePoint = character.codePointAt(0) || 0;
+  return codePoint <= 0x1f || codePoint === 0x7f;
+}
+
+function validRouteSegment(raw) {
+  if (!raw || [...raw].some(character => character.charCodeAt(0) > 0x7f || isControlCharacter(character))) return false;
+  let decoded;
+  try { decoded = decodeURIComponent(raw); } catch { return false; }
+  if (!decoded.trim() || decoded === '.' || decoded === '..' || bytes(decoded) > 512) return false;
+  return ![...decoded].some(character => (
+    isControlCharacter(character)
+    || /\s/u.test(character)
+    || ['/', '\\', '?', '#'].includes(character)
+  ));
+}
+
+function validRoute(route, kind) {
+  if (!route || route.startsWith('/') || route.endsWith('/') || route.includes('//')) return false;
+  if ([...route].some(character => isControlCharacter(character) || ['?', '#', '\\'].includes(character))) return false;
+  const parts = route.split('/');
+  const expectedLength = kind === 'chat' ? 2 : 3;
+  return parts.length === expectedLength && parts[0] === kind && parts.slice(1).every(validRouteSegment);
+}
+
 function validateData(data) {
   const normalized = Object.fromEntries(Object.entries(data || {}).map(([key, value]) => [key, String(value ?? '')]));
   if (Object.keys(normalized).some(key => !DATA_KEYS.has(key))) throw internalError('invalid_fcm_data_key');
@@ -84,7 +109,7 @@ function validateData(data) {
   if (!normalized.notification_epoch || !normalized.device_id || !/^\d+$/.test(normalized.at || '')) throw internalError('invalid_fcm_scope');
   if (bytes(normalized.route) > MAX_ROUTE_BYTES) throw internalError('payload_too_large');
   if (bytes(normalized.title) > MAX_TEXT_BYTES || bytes(normalized.body) > MAX_TEXT_BYTES) throw internalError('payload_too_large');
-  if (!new RegExp(`^${normalized.kind}/[^/\\s]+$`).test(normalized.route)) throw internalError('invalid_fcm_route');
+  if (!validRoute(normalized.route, normalized.kind)) throw internalError('invalid_fcm_route');
   if (bytes(JSON.stringify(normalized)) > MAX_DATA_BYTES) throw internalError('payload_too_large');
   return normalized;
 }

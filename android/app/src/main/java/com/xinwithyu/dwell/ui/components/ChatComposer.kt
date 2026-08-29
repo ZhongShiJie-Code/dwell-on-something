@@ -18,10 +18,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Stop
-import androidx.compose.material.icons.outlined.Waves
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -76,24 +76,30 @@ fun ChatComposer(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().heightIn(min = 38.dp, max = 132.dp), contentAlignment = Alignment.TopStart) {
-            if (text.isEmpty()) Text(
-                if (busy) "Claude 正在回复…" else "Chat with Claude…",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 1.dp),
-            )
-            BasicTextField(
-                value = text,
-                onValueChange = onTextChange,
-                enabled = !busy,
-                textStyle = MaterialTheme.typography.bodyLarge.merge(TextStyle(color = MaterialTheme.colorScheme.onSurface)),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth().semantics {
-                    contentDescription = "消息输入框"
-                },
-            )
-        }
+        BasicTextField(
+            value = text,
+            onValueChange = onTextChange,
+            enabled = !busy,
+            minLines = 1,
+            maxLines = 5,
+            textStyle = MaterialTheme.typography.bodyLarge.merge(TextStyle(color = MaterialTheme.colorScheme.onSurface)),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 38.dp, max = 132.dp)
+                .semantics { contentDescription = "消息输入框" },
+            decorationBox = { innerTextField ->
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopStart) {
+                    if (text.isEmpty()) Text(
+                        if (busy) "Claude 正在回复…" else "Chat with Claude…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(top = 1.dp),
+                    )
+                    innerTextField()
+                }
+            },
+        )
         Spacer(Modifier.size(6.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             RoundAction(onAdd) { Icon(Icons.Outlined.Add, "添加", Modifier.size(23.dp)) }
@@ -125,7 +131,7 @@ fun ChatComposer(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    if (busy) Icons.Outlined.Stop else Icons.Outlined.Waves,
+                    if (busy) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send,
                     if (busy) "停止" else "发送",
                     Modifier.size(if (busy) 20.dp else 23.dp),
                     tint = if (busy || canSend) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,

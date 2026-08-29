@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { sanitizedChildEnv } from './child-env.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { claudeChildEnv, claudeProviderEnv, sanitizedChildEnv } from './child-env.mjs';
 
 test('sanitizedChildEnv preserves safe runtime variables and adds absolute executable directory', () => {
   const env = sanitizedChildEnv({
@@ -73,4 +76,45 @@ test('explicit values cannot reintroduce blocked variables', () => {
     'APP_SECRET',
     'NODE_OPTIONS',
   ]) assert.equal(Object.hasOwn(env, key), false, key);
+});
+
+test('claudeProviderEnv imports only provider settings from an owner-only settings file', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dwell-child-env-'));
+  const settingsFile = path.join(directory, 'settings.json');
+  fs.writeFileSync(settingsFile, JSON.stringify({
+    env: {
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      ANTHROPIC_AUTH_TOKEN: 'test-provider-token',
+      ANTHROPIC_API_KEY: 'test-api-key',
+      THIRD_PARTY_TOKEN: 'must-not-pass',
+      ANTHROPIC_BASE_URL_BAD: 'file:///secret',
+    },
+  }));
+  fs.chmodSync(settingsFile, 0o600);
+  try {
+    const provider = claudeProviderEnv({ settingsFile });
+    assert.deepEqual(provider, {
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      ANTHROPIC_AUTH_TOKEN: 'test-provider-token',
+      ANTHROPIC_API_KEY: 'test-api-key',
+    });
+    const env = claudeChildEnv({ settingsFile, baseEnv: { PATH: '/usr/bin' } });
+    assert.equal(env.ANTHROPIC_AUTH_TOKEN, 'test-provider-token');
+    assert.equal(env.ANTHROPIC_API_KEY, 'test-api-key');
+    assert.equal(env.PATH, '/usr/bin');
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('claudeProviderEnv rejects settings files readable by other users', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dwell-child-env-'));
+  const settingsFile = path.join(directory, 'settings.json');
+  fs.writeFileSync(settingsFile, JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: 'test-provider-token' } }));
+  fs.chmodSync(settingsFile, 0o644);
+  try {
+    assert.deepEqual(claudeProviderEnv({ settingsFile }), {});
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check pairing-code.mjs && node --check claude-history.mjs && node --check desktop-tasks.mjs && node --check desktop-task-history.mjs && node --check desktop-task-bridge.mjs && node --check child-env.mjs && node --check db/database.mjs && node --check services/fcm-sender.mjs && node --check services/fcm-dispatcher.mjs",
+    "check": "node --check server.mjs && node --check pairing-code.mjs && node --check claude-history.mjs && node --check desktop-tasks.mjs && node --check desktop-task-history.mjs && node --check desktop-task-bridge.mjs && node --check child-env.mjs && node --check message-parts.mjs && node --check db/database.mjs && node --check services/fcm-sender.mjs && node --check services/fcm-dispatcher.mjs",
     "test": "node --test '*.test.mjs' 'db/*.test.mjs' 'services/*.test.mjs'",
     "pair": "node pairing-code.mjs",
     "smoke": "node smoke.mjs",

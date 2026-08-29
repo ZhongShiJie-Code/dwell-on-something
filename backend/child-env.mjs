@@ -1,10 +1,17 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import { URL } from 'node:url';
 
 const ALWAYS_BLOCKED = new Set([
   'GOOGLE_APPLICATION_CREDENTIALS',
   'ANTHROPIC_API_KEY',
   'DWELL_AUTH_TOKEN',
   'DWELL_HEALTH_TOKEN',
+]);
+const CLAUDE_PROVIDER_KEYS = new Set([
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
 ]);
 
 function sensitiveKey(key) {
@@ -40,6 +47,51 @@ export function sanitizedChildEnv({ executionPath = '', baseEnv = process.env, e
     if (!entries.includes(directory)) env.PATH = [directory, ...entries].join(path.delimiter);
   }
   return env;
+}
+
+function defaultClaudeSettingsFile() {
+  return process.env.DWELL_CLAUDE_SETTINGS
+    || path.join(process.env.HOME || '', '.claude', 'settings.json');
+}
+
+function validProviderBase(value) {
+  try {
+    const parsed = new URL(String(value));
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+export function claudeProviderEnv({ settingsFile = defaultClaudeSettingsFile() } = {}) {
+  const file = path.resolve(String(settingsFile || ''));
+  if (!file || file === path.parse(file).root) return {};
+  try {
+    const stat = fs.lstatSync(file);
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    if (!stat.isFile() || (uid != null && stat.uid !== uid) || (stat.mode & 0o077) !== 0) return {};
+    const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const source = settings?.env;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+    const env = {};
+    for (const key of CLAUDE_PROVIDER_KEYS) {
+      const value = source[key];
+      if (typeof value !== 'string' || !value) continue;
+      if (key === 'ANTHROPIC_BASE_URL' && !validProviderBase(value)) continue;
+      env[key] = value;
+    }
+    return env;
+  } catch {
+    return {};
+  }
+}
+
+export function claudeChildEnv(options = {}) {
+  const { settingsFile = defaultClaudeSettingsFile(), ...baseOptions } = options;
+  return {
+    ...sanitizedChildEnv(baseOptions),
+    ...claudeProviderEnv({ settingsFile }),
+  };
 }
 
 export { sensitiveKey };

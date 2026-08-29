@@ -25,7 +25,8 @@ import { listClaudeCodeChats, loadClaudeCodeChat } from './claude-history.mjs';
 import { openDwellDatabase } from './db/database.mjs';
 import { createFcmSender } from './services/fcm-sender.mjs';
 import { createFcmDispatcher } from './services/fcm-dispatcher.mjs';
-import { sanitizedChildEnv } from './child-env.mjs';
+import { sanitizedChildEnv, claudeChildEnv } from './child-env.mjs';
+import { visibleMessagePartsFromAssistant } from './message-parts.mjs';
 
 let webpush = null;
 try { ({ default: webpush } = await import('web-push')); } catch { /* optional until npm install */ }
@@ -1200,7 +1201,7 @@ async function claudeOnce(prompt) {
   try {
     ({ stdout } = await execFileAsync(CLAUDE_BIN, args, {
       cwd: WORKSPACE,
-      env: sanitizedChildEnv({ executionPath: CLAUDE_BIN, explicit: { NO_COLOR: '1' } }),
+      env: claudeChildEnv({ executionPath: CLAUDE_BIN, explicit: { NO_COLOR: '1' } }),
       timeout: Math.min(CLAUDE_TIMEOUT_MS, 180000),
       maxBuffer: 8 * 1024 * 1024,
     }));
@@ -1220,16 +1221,6 @@ async function claudeOnce(prompt) {
 async function talkToGong(text) {
   const prompt = `你住在 dwell 的另一间房。你和主助手相互独立，不冒充主助手。自然、简洁地回复用户。\n\n用户：${text}`;
   return apiAuth.mode === 'api' && apiAuth.base ? providerOnce(prompt) : claudeOnce(prompt);
-}
-
-function messagePartsFromAssistant(message) {
-  const parts = Array.isArray(message?.content) ? message.content : [];
-  return parts.map(part => {
-    if (part.type === 'text') return { kind: 'gu', text: String(part.text || '') };
-    if (part.type === 'thinking') return { kind: 'think', text: String(part.thinking || '') };
-    if (part.type === 'tool_use') return { kind: 'tool', text: String(part.name || 'Tool'), extra: JSON.stringify(part.input || {}) };
-    return null;
-  }).filter(item => item && (item.text || item.kind === 'tool'));
 }
 
 async function emitProgressiveText(text, run) {
@@ -1261,7 +1252,7 @@ async function runClaude(prompt, attachments, run) {
   if (!isCurrentRun(run)) return;
   const child = spawn(CLAUDE_BIN, cliArgs(fullPrompt, firstTurn, run.chatId, run.sessionId, workingDirectory), {
     cwd: workingDirectory,
-    env: sanitizedChildEnv({ executionPath: CLAUDE_BIN, explicit: { NO_COLOR: '1' } }),
+    env: claudeChildEnv({ executionPath: CLAUDE_BIN, explicit: { NO_COLOR: '1' } }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   run.child = child;
@@ -1324,7 +1315,7 @@ async function runClaude(prompt, attachments, run) {
     }
     if (data.type === 'assistant') {
       sawAssistant = true;
-      for (const part of messagePartsFromAssistant(data.message)) {
+      for (const part of visibleMessagePartsFromAssistant(data.message)) {
         if (!isCurrentRun(run)) return;
         if (part.kind === 'think' && part.text) {
           await appendMessage(part, run.chatId, run);
@@ -1339,10 +1330,6 @@ async function runClaude(prompt, attachments, run) {
           run.finalMessage = saved;
           data.dwell_message_id = saved.seq;
           data.dwell_at = saved.at;
-        }
-        if (part.kind === 'tool') {
-          await appendMessage(part, run.chatId, run);
-          if (!isCurrentRun(run)) return;
         }
       }
     }
@@ -1429,12 +1416,21 @@ async function runClaude(prompt, attachments, run) {
 
 function stopRun() {
   if (!activeRun) return false;
-  activeRun.stopped = true;
-  if (activeRun.controller) activeRun.controller.abort();
-  if (activeRun.child) {
-    const child = activeRun.child;
+  const run = activeRun;
+  run.stopped = true;
+  if (state) state.busy = false;
+  if (run.controller) run.controller.abort();
+  if (run.child) {
+    const child = run.child;
     child.kill('SIGTERM');
     setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 2000).unref();
+  }
+  // Notify immediately instead of waiting for a provider/CLI close event. This keeps
+  // clients from being stuck in the busy state when the child ignores SIGTERM.
+  if (!run.superseded && !run.stopNotified) {
+    run.stopNotified = true;
+    emit({ type: 'system', subtype: 'stopped', text: '（我停下了）' });
+    notifyWaiters();
   }
   return true;
 }

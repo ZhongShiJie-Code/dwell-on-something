@@ -185,6 +185,19 @@ async function dwellRuns(taskId) {
   return [...byId.values()];
 }
 
+async function resolveDesktopSessionDir(root, sessionId) {
+  const normalized = String(sessionId || '').trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}$/.test(normalized)) return path.join(root, '__missing__');
+  const shortId = normalized.replace(/^local_/, '').slice(0, 8);
+  for (const candidate of [...new Set([normalized, shortId].filter(Boolean))]) {
+    const candidateDir = path.join(root, candidate);
+    try {
+      if ((await fsp.stat(candidateDir)).isDirectory()) return candidateDir;
+    } catch {}
+  }
+  return path.join(root, normalized);
+}
+
 async function desktopRuns(taskId, includeSteps) {
   const taskFile = await firstTaskFile();
   if (!taskFile) return [];
@@ -197,7 +210,7 @@ async function desktopRuns(taskId, includeSteps) {
     const metadata = await readJson(path.join(root, entry.name));
     if (String(metadata?.scheduledTaskId || '') !== taskId) continue;
     const sessionId = String(metadata.sessionId || entry.name.slice(0, -5));
-    const sessionDir = path.join(root, sessionId);
+    const sessionDir = await resolveDesktopSessionDir(root, sessionId);
     const audit = await parseDesktopAudit(sessionDir, metadata, includeSteps);
     runs.push({
       id: `desktop_${sessionId.replace(/^local_/, '')}`,

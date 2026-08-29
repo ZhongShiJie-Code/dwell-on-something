@@ -207,45 +207,74 @@ fun ChatScreen(
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 86.dp, start = 22.dp, end = 22.dp, bottom = 190.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            if (grouped.isEmpty() && streamingText.isBlank()) {
-                item(key = "empty") { EmptyConversation(Modifier.fillParentMaxHeight(0.66f)) }
-            }
-            items(grouped, key = { "${it.first.seq}:${it.second?.root ?: 0}" }) { (message, group) ->
-                when (message.kind) {
-                    "me" -> UserMessage(message)
-                    "gu" -> AssistantMessage(
-                        message = message,
-                        group = group,
-                        onPrevious = {
-                            group ?: return@AssistantMessage
-                            val current = variantSelection[group.root] ?: (group.variants.size - 1)
-                            variantSelection[group.root] = (current - 1).coerceAtLeast(0)
-                        },
-                        onNext = {
-                            group ?: return@AssistantMessage
-                            val current = variantSelection[group.root] ?: (group.variants.size - 1)
-                            variantSelection[group.root] = (current + 1).coerceAtMost(group.variants.size - 1)
-                        },
-                        onSpeak = { speechPlayer.speak(message.text) },
-                        onRegenerate = { onRegenerate(message.seq) },
-                        onFeedback = { value -> onFeedback(message.seq, value) },
-                        onDetail = { title, body -> detailSheet = title to body },
-                    )
-                    "think" -> ThoughtCard(message.text) { detailSheet = "Thought process" to message.text }
-                    "tool" -> ToolCard(message)
-                }
-            }
-            if (streamingThought.isNotBlank()) item(key = "stream-thinking") { ThoughtCard(streamingThought) { detailSheet = "Thought process" to streamingThought } }
-            if (streamingText.isNotBlank()) item(key = "stream-text") { StreamingMessage(streamingText) }
-        }
+        Column(Modifier.fillMaxSize()) {
+            ChatTopBar(onMenu, onNewChat, { moreVisible = true })
 
-        ChatTopBar(onMenu, onNewChat, { moreVisible = true }, Modifier.align(Alignment.TopCenter))
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = PaddingValues(top = 18.dp, start = 22.dp, end = 22.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                if (grouped.isEmpty() && streamingText.isBlank()) {
+                    item(key = "empty") { EmptyConversation(Modifier.fillParentMaxHeight(0.66f)) }
+                }
+                items(grouped, key = { "${it.first.seq}:${it.second?.root ?: 0}" }) { (message, group) ->
+                    when (message.kind) {
+                        "me" -> UserMessage(message)
+                        "gu" -> AssistantMessage(
+                            message = message,
+                            group = group,
+                            onPrevious = {
+                                group ?: return@AssistantMessage
+                                val current = variantSelection[group.root] ?: (group.variants.size - 1)
+                                variantSelection[group.root] = (current - 1).coerceAtLeast(0)
+                            },
+                            onNext = {
+                                group ?: return@AssistantMessage
+                                val current = variantSelection[group.root] ?: (group.variants.size - 1)
+                                variantSelection[group.root] = (current + 1).coerceAtMost(group.variants.size - 1)
+                            },
+                            onSpeak = { speechPlayer.speak(message.text) },
+                            onRegenerate = { onRegenerate(message.seq) },
+                            onFeedback = { value -> onFeedback(message.seq, value) },
+                            onDetail = { title, body -> detailSheet = title to body },
+                        )
+                        "think" -> ThoughtCard(message.text) { detailSheet = "Thought process" to message.text }
+                        "tool" -> ToolCard(message)
+                    }
+                }
+                if (streamingThought.isNotBlank()) item(key = "stream-thinking") { ThoughtCard(streamingThought) { detailSheet = "Thought process" to streamingThought } }
+                if (streamingText.isNotBlank()) item(key = "stream-text") { StreamingMessage(streamingText) }
+            }
+
+            ChatComposer(
+                text = draft,
+                modelName = model.items.find { it.id == model.model }?.name ?: model.model.ifBlank { "Mac 默认模型" },
+                busy = busy,
+                listening = listening,
+                attachmentNames = attachments.map { it.name },
+                onTextChange = { draft = it; onDraftChanged(it) },
+                onAdd = { addVisible = true },
+                onModel = { modelVisible = true },
+                onVoice = {
+                    if (listening) voice.stop()
+                    else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        if (!voice.start()) launchVoiceFallback()
+                    }
+                    else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onSend = {
+                    onSend(draft, attachments)
+                    draft = ""
+                    attachments = emptyList()
+                    onDraftChanged("")
+                },
+                onStop = onStop,
+                onRemoveAttachment = { index -> attachments = attachments.filterIndexed { itemIndex, _ -> itemIndex != index } },
+                modifier = Modifier.imePadding().navigationBarsPadding(),
+            )
+        }
 
         val visibleError = localError.ifBlank { error }
         AnimatedVisibility(visible = visibleError.isNotBlank(), modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp, start = 18.dp, end = 18.dp)) {
@@ -258,33 +287,6 @@ fun ChatScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-
-        ChatComposer(
-            text = draft,
-            modelName = model.items.find { it.id == model.model }?.name ?: model.model.ifBlank { "Mac 默认模型" },
-            busy = busy,
-            listening = listening,
-            attachmentNames = attachments.map { it.name },
-            onTextChange = { draft = it; onDraftChanged(it) },
-            onAdd = { addVisible = true },
-            onModel = { modelVisible = true },
-            onVoice = {
-                if (listening) voice.stop()
-                else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                    if (!voice.start()) launchVoiceFallback()
-                }
-                else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-            },
-            onSend = {
-                onSend(draft, attachments)
-                draft = ""
-                attachments = emptyList()
-                onDraftChanged("")
-            },
-            onStop = onStop,
-            onRemoveAttachment = { index -> attachments = attachments.filterIndexed { itemIndex, _ -> itemIndex != index } },
-            modifier = Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding(),
-        )
     }
 
     AddToChatSheet(
@@ -476,6 +478,7 @@ private fun displayMessages(messages: List<MessageDto>, selection: Map<Long, Int
         .mapValues { (_, values) -> values.sortedWith(compareBy<MessageDto> { it.version ?: if (it.variantOf == null) 1 else 2 }.thenBy { it.seq }) }
     val out = mutableListOf<Pair<MessageDto, VariantGroup?>>()
     for (message in messages) {
+        if (!isMobileVisibleMessageKind(message.kind)) continue
         if (message.kind != "gu") { out += message to null; continue }
         if (message.variantOf != null) continue
         val variants = roots[message.seq].orEmpty()

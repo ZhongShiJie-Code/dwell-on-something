@@ -80,7 +80,9 @@ export async function listDesktopTasks() {
     if (!task || !task.id) continue;
     const detail = await descriptionFor(task.filePath);
     const runState = await runStateFor(task.id);
-    const running = ['queued', 'running'].includes(runState.status);
+    const runs = await listTaskRuns(String(task.id));
+    const latestRun = runs[0] || null;
+    const running = latestRun?.status === 'running' || ['queued', 'running'].includes(runState.status);
     items.push({
       id: String(task.id),
       name: displayName(task, detail),
@@ -88,10 +90,10 @@ export async function listDesktopTasks() {
       enabled: task.enabled !== false,
       schedule: scheduleFor(task),
       model: task.model || '',
-      lastRunAt: runState.completedAt || runState.startedAt || task.lastRunAt || null,
-      lastResult: running ? 'running' : (runState.result || task.lastResult || task.lastRunResult || 'unknown'),
+      lastRunAt: latestRun?.completedAt || latestRun?.startedAt || runState.completedAt || runState.startedAt || task.lastRunAt || null,
+      lastResult: running ? 'running' : (latestRun?.status || runState.result || task.lastResult || task.lastRunResult || 'unknown'),
       running,
-      runSummary: runState.summary || runState.error || '',
+      runSummary: latestRun?.summary || runState.summary || runState.error || '',
     });
   }
   return {
