@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -21,55 +22,105 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.xinwithyu.dwell.MainActivity
 import com.xinwithyu.dwell.R
+import com.xinwithyu.dwell.core.model.NotificationDto
+import com.xinwithyu.dwell.core.notification.NotificationCoordinator
+import com.xinwithyu.dwell.core.notification.NotificationRoute
 import com.xinwithyu.dwell.core.repository.DwellRepository
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.first
 
 class NotificationWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val repository = DwellRepository.get(applicationContext)
-        val settings = repository.settingsStore.settings.first()
-        if (!settings.notificationsEnabled) return Result.success()
-        val response = repository.notifications(settings.notificationCursor).getOrElse { return Result.retry() }
-        if (settings.notificationCursor > 0) response.items.takeLast(3).forEach { item ->
-            DwellNotifier.show(applicationContext, item.title, item.body, item.id, item.route)
-        }
-        repository.settingsStore.setNotificationCursor(maxOf(settings.notificationCursor, response.next))
-        return Result.success()
+        repository.notificationCoordinator.recoverLeasesAndCleanup()
+        return repository.syncNotifications().fold(
+            onSuccess = { Result.success() },
+            onFailure = { Result.retry() },
+        )
     }
 
     companion object {
         const val EXTRA_ROUTE = "dwell-notification-route"
+        const val EXTRA_NOTIFICATION_EPOCH = "dwell-notification-epoch"
+        const val EXTRA_DEVICE_ID = "dwell-notification-device-id"
+        const val EXTRA_NOTIFICATION_ID = "dwell-notification-id"
     }
 }
 
 object DwellNotifier {
     private const val CHANNEL_ID = "dwell-messages-v2"
+    const val NOTIFICATION_ACTION_PREFIX = "com.xinwithyu.dwell.NOTIFICATION"
 
-    fun show(context: Context, title: String, body: String, id: Long, route: String) {
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    fun notificationAction(notificationEpoch: String, pairedDeviceId: String, notificationId: Long): String =
+        "$NOTIFICATION_ACTION_PREFIX.$notificationEpoch|$pairedDeviceId|$notificationId"
+
+    fun show(
+        context: Context,
+        notification: NotificationDto,
+        route: NotificationRoute,
+        notificationEpoch: String,
+        pairedDeviceId: String,
+    ): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return false
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Dwell 消息与任务", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Mac 有新回复或定时任务完成时提醒"
+            NotificationChannel(CHANNEL_ID, "Claude Cli 通知", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Claude Cli 有新回复或定时任务完成时提醒"
             },
         )
+
+        val stableIdentity = "$notificationEpoch|$pairedDeviceId|${notification.notificationId}"
+        val foldedId = stableNotificationId(stableIdentity)
         val intent = Intent(context, MainActivity::class.java).apply {
+            action = notificationAction(notificationEpoch, pairedDeviceId, notification.notificationId)
+            data = Uri.parse("dwell://notification/${Uri.encode(notificationEpoch)}/${Uri.encode(pairedDeviceId)}/${notification.notificationId}")
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(NotificationWorker.EXTRA_ROUTE, route)
+            putExtra(NotificationWorker.EXTRA_ROUTE, route.raw)
+            putExtra(NotificationWorker.EXTRA_NOTIFICATION_EPOCH, notificationEpoch)
+            putExtra(NotificationWorker.EXTRA_DEVICE_ID, pairedDeviceId)
+            putExtra(NotificationWorker.EXTRA_NOTIFICATION_ID, notification.notificationId)
         }
-        val pending = PendingIntent.getActivity(context, (id and 0x7fffffff).toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pending = PendingIntent.getActivity(
+            context,
+            foldedId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val body = notification.body.ifBlank { "回答已完成" }
+        val publicVersion = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Claude Cli")
+            .setContentText("有新通知")
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
         manager.notify(
-            (id and 0x7fffffff).toInt(),
+            stableIdentity,
+            foldedId,
             NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(title.ifBlank { "Dwell" })
-                .setContentText(body.ifBlank { "有新消息" })
+                .setContentTitle("Claude Cli")
+                .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(publicVersion)
                 .setContentIntent(pending)
                 .build(),
         )
+        return true
+    }
+
+    private fun stableNotificationId(identity: String): Int {
+        val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+        val value = ByteBuffer.wrap(digest, 0, Int.SIZE_BYTES).int and Int.MAX_VALUE
+        return if (value == 0) 1 else value
     }
 }
 

@@ -11,6 +11,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import android.net.Uri
+import com.xinwithyu.dwell.core.notification.NotificationRoute
 import com.xinwithyu.dwell.core.repository.ConnectionState
 import com.xinwithyu.dwell.core.repository.DwellRepository
 import com.xinwithyu.dwell.ui.components.DwellNavigationDrawer
@@ -24,7 +26,7 @@ import com.xinwithyu.dwell.ui.screens.TaskRunScreen
 import com.xinwithyu.dwell.ui.screens.TasksScreen
 
 @Composable
-fun DwellApp(repository: DwellRepository, pendingRoute: String = "", safeMode: Boolean = false, onRouteConsumed: () -> Unit = {}) {
+fun DwellApp(repository: DwellRepository, pendingRoute: NotificationRoute? = null, safeMode: Boolean = false, dark: Boolean = false, onRouteConsumed: () -> Unit = {}) {
     val state by repository.state.collectAsStateWithLifecycle()
     val settings by repository.settings.collectAsStateWithLifecycle()
     val chats by repository.chats.collectAsStateWithLifecycle()
@@ -41,27 +43,25 @@ fun DwellApp(repository: DwellRepository, pendingRoute: String = "", safeMode: B
     val route = entry?.destination?.route.orEmpty()
     val rootRoute = route in setOf("chat", "chats", "tasks")
 
-    LaunchedEffect(pendingRoute) {
-        if (pendingRoute.isBlank()) return@LaunchedEffect
-        val parts = pendingRoute.split('/').filter { it.isNotBlank() }
-        when (parts.firstOrNull()) {
-            "chat" -> {
-                parts.getOrNull(1)?.let(repository::openChat)
+    LaunchedEffect(pendingRoute, state.connection) {
+        val destination = pendingRoute ?: return@LaunchedEffect
+        if (state.connection != ConnectionState.CONNECTED) return@LaunchedEffect
+        when (destination) {
+            is NotificationRoute.Chat -> {
+                repository.openChat(destination.chatId)
                 nav.navigate("chat") { launchSingleTop = true }
             }
-            "task" -> {
-                val taskId = parts.getOrNull(1)
-                val runId = parts.getOrNull(2)
-                if (taskId != null && runId != null) nav.navigate("task/$taskId/run/$runId")
-                else if (taskId != null) nav.navigate("task/$taskId")
-                else nav.navigate("tasks")
+            is NotificationRoute.Task -> {
+                nav.navigate(
+                    "task/${Uri.encode(destination.taskId)}/run/${Uri.encode(destination.runId)}",
+                ) { launchSingleTop = true }
             }
         }
         onRouteConsumed()
     }
 
     DwellNavigationDrawer(
-        selected = when {
+        selectedDestination = when {
             route.startsWith("legacy/") -> route.substringAfter("legacy/")
             route.startsWith("task") || route == "tasks" -> "tasks"
             else -> "chat"
@@ -134,7 +134,7 @@ fun DwellApp(repository: DwellRepository, pendingRoute: String = "", safeMode: B
             }
             composable("settings") {
                 SettingsScreen(
-                    settings, state.connection, state.endpoint, state.backendVersion, safeMode,
+                    settings, state.connection, state.endpoint, state.backendVersion, state.pushStatus, safeMode,
                     onBack = { nav.popBackStack() },
                     onSaveConnection = repository::saveConnection,
                     onReconnect = repository::reconnect,
@@ -149,6 +149,7 @@ fun DwellApp(repository: DwellRepository, pendingRoute: String = "", safeMode: B
                     endpoint = state.endpoint,
                     deviceToken = repository.deviceTokenForLegacy(),
                     safeMode = safeMode,
+                    dark = dark,
                     onBack = { nav.popBackStack() },
                 )
             }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,7 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBackIosNew
-import androidx.compose.material.icons.outlined.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
@@ -70,6 +71,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -173,7 +177,7 @@ fun ChatScreen(
     }
 
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && !voice.start()) launchVoiceFallback() else if (!granted) localError = "请在系统设置中允许 Dwell 使用麦克风"
+        if (granted && !voice.start()) launchVoiceFallback() else if (!granted) localError = "请在系统设置中允许 Claude Cli 使用麦克风"
     }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) attachments = attachments + bitmapAttachment(bitmap)
@@ -247,8 +251,9 @@ fun ChatScreen(
         AnimatedVisibility(visible = visibleError.isNotBlank(), modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp, start = 18.dp, end = 18.dp)) {
             Text(
                 visibleError,
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(18.dp))
-                    .clickable { localError = "" }.padding(horizontal = 14.dp, vertical = 11.dp),
+                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(18.dp))
+                    .clickable(role = Role.Button) { localError = "" }.padding(horizontal = 14.dp, vertical = 11.dp),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -337,19 +342,22 @@ private fun MoreOption(label: String, onClick: () -> Unit) {
     Text(
         label,
         style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 16.dp),
+        modifier = Modifier.fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 16.dp),
     )
 }
 
 @Composable
 private fun ChatTopBar(onMenu: () -> Unit, onNewChat: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(horizontal = 12.dp),
+        modifier.fillMaxWidth().statusBarsPadding().defaultMinSize(minHeight = 68.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DwellIconButton(Icons.Outlined.Menu, "菜单", onMenu)
         Spacer(Modifier.weight(1f))
-        Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.onBackground, CircleShape).clickable(onClick = onNewChat), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.onBackground, CircleShape).clickable(role = Role.Button, onClick = onNewChat), contentAlignment = Alignment.Center) {
             Icon(Icons.Outlined.Add, "新会话", tint = MaterialTheme.colorScheme.background, modifier = Modifier.size(22.dp))
         }
         DwellIconButton(Icons.Outlined.MoreVert, "更多", onMore)
@@ -402,9 +410,9 @@ private fun AssistantMessage(
         }
         if (group != null && group.variants.size > 1) {
             Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onPrevious, enabled = group.position > 0, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.ArrowBackIosNew, "上一个版本", Modifier.size(15.dp)) }
+                IconButton(onClick = onPrevious, enabled = group.position > 0, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.ArrowBackIosNew, "上一个版本", Modifier.size(15.dp)) }
                 Text("${group.position + 1} / ${group.variants.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(onClick = onNext, enabled = group.position < group.variants.lastIndex, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.ArrowForwardIos, "下一个版本", Modifier.size(15.dp)) }
+                IconButton(onClick = onNext, enabled = group.position < group.variants.lastIndex, modifier = Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowForwardIos, "下一个版本", Modifier.size(15.dp)) }
             }
         }
         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -448,7 +456,7 @@ private fun StreamingMessage(text: String) {
 
 @Composable
 private fun MessageAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean = false, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp).semantics { this.selected = selected }) {
         Icon(icon, label, Modifier.size(19.dp), tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

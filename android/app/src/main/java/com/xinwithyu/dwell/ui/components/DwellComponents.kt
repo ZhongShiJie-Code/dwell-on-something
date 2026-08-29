@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -128,6 +129,7 @@ fun ActionPill(
 ) {
     androidx.compose.foundation.layout.Row(
         modifier = modifier
+            .defaultMinSize(minHeight = 48.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),

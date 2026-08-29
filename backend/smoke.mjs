@@ -23,11 +23,11 @@ const json = (body, method = 'POST') => ({
 
 const health = await call('health');
 assert.equal(health.ok, true);
-assert.equal(health.version, '0.4.7');
+assert.equal(health.version, '0.6.1');
 
 const status = await call('status');
 assert.equal(status.alive, true);
-assert.equal(status.version, '0.4.7');
+assert.equal(status.version, '0.6.1');
 
 const context = await call('context');
 assert.equal(context.ok, true);
@@ -182,8 +182,8 @@ const mockProvider = http.createServer(async (req, res) => {
   if (slow) await new Promise(resolve => setTimeout(resolve, 280));
   const answer = slow ? ['old ', 'reply'] : ['mock ', 'reply'];
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-  res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer[0] } }] })}\n\n`);
-  res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer[1] } }], usage: { prompt_tokens: 4, completion_tokens: 2 } })}\n\n`);
+  res.write(`data: ${JSON.stringify({ model: body.model, choices: [{ delta: { content: answer[0] } }] })}\n\n`);
+  res.write(`data: ${JSON.stringify({ model: body.model, choices: [{ delta: { content: answer[1] } }], usage: { prompt_tokens: 4, completion_tokens: 2 } })}\n\n`);
   res.end('data: [DONE]\n\n');
 });
 await new Promise(resolve => mockProvider.listen(0, '127.0.0.1', resolve));
@@ -236,11 +236,11 @@ try {
   const retryUserCount = providerMessages.msgs.filter(item => item.kind === 'me').length;
   const beforeRetryPoll = await call('poll?since=0&wait=0');
   const retried = await call('retry', json({ message_id: retryTarget.seq }));
-  assert.ok(retried.removed.map(String).includes(String(retryTarget.seq)));
+  assert.equal(String(retried.source_message_id), String(retryTarget.seq));
   await new Promise(resolve => setTimeout(resolve, 180));
   const afterRetryMessages = await call('messages?limit=400');
   assert.equal(afterRetryMessages.msgs.filter(item => item.kind === 'me').length, retryUserCount);
-  assert.equal(afterRetryMessages.msgs.some(item => item.seq === retryTarget.seq), false);
+  assert.equal(afterRetryMessages.msgs.some(item => item.seq === retryTarget.seq), true);
   assert.ok(afterRetryMessages.msgs.some(item => item.kind === 'gu' && item.text === 'mock reply'));
   const afterRetryPoll = await call(`poll?since=${beforeRetryPoll.next}&wait=0`);
   assert.ok(afterRetryPoll.events.some(item => item.type === 'system' && item.subtype === 'regenerate'));
@@ -286,13 +286,21 @@ try {
   const branchUser = beforeBranch.msgs.filter(item => item.kind === 'me' && item.seq < branchTarget.seq).at(-1);
   assert.ok(branchUser);
   assert.ok(beforeBranch.msgs.some(item => item.seq > branchTarget.seq));
+  const branchRoot = Number(branchTarget.variantOf) || Number(branchTarget.seq);
+  const branchVersions = beforeBranch.msgs
+    .filter(item => Number(item.seq) === branchRoot || Number(item.variantOf) === branchRoot)
+    .map(item => Number(item.version) || (Number(item.seq) === branchRoot ? 1 : 0));
+  const branchVersion = Math.max(1, ...branchVersions) + 1;
   await call('retry', json({ message_id: branchTarget.seq }));
   await new Promise(resolve => setTimeout(resolve, 180));
   const afterBranch = await call('messages?limit=400');
   assert.equal(afterBranch.msgs.filter(item => item.kind === 'me').length,
-    beforeBranch.msgs.filter(item => item.kind === 'me' && item.seq <= branchUser.seq).length);
-  assert.equal(afterBranch.msgs.some(item => item.text === `replacement-${stamp}`), false);
-  assert.ok(afterBranch.msgs.some(item => item.kind === 'gu' && item.text === 'mock reply'));
+    beforeBranch.msgs.filter(item => item.kind === 'me').length);
+  assert.equal(afterBranch.msgs.some(item => item.text === `replacement-${stamp}`), true);
+  assert.ok(afterBranch.msgs.some(item => item.kind === 'gu' && item.text === 'mock reply'
+    && Number(item.replyTo) === Number(branchUser.seq)
+    && Number(item.variantOf) === branchRoot
+    && Number(item.version) === branchVersion));
 
   const beforeSwitch = (await call('chats?scope=live')).items.find(item => item.current);
   await call('newchat', json({ arm: true }));

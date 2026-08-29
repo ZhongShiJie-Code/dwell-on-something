@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -49,7 +51,7 @@ fun AddToChatSheet(
 ) {
     DwellSheet(visible = visible, onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-            Box(Modifier.fillMaxWidth().height(48.dp)) {
+            Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).padding(vertical = 4.dp)) {
                 IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterStart).size(48.dp)) {
                     Icon(Icons.Outlined.Close, "关闭", Modifier.size(23.dp))
                 }
@@ -87,7 +89,8 @@ private fun AttachmentTile(icon: ImageVector, label: String, onClick: () -> Unit
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f), RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
+            .defaultMinSize(minHeight = 48.dp)
             .padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -116,7 +119,10 @@ private fun SheetRow(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth()
+            .then(if (trailing == null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .defaultMinSize(minHeight = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {

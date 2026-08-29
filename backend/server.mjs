@@ -23,6 +23,9 @@ import { listDesktopTasks, controlDesktopTask, desktopTaskDetail, desktopTaskRun
 import { recentCompletedTaskRuns } from './desktop-task-history.mjs';
 import { listClaudeCodeChats, loadClaudeCodeChat } from './claude-history.mjs';
 import { openDwellDatabase } from './db/database.mjs';
+import { createFcmSender } from './services/fcm-sender.mjs';
+import { createFcmDispatcher } from './services/fcm-dispatcher.mjs';
+import { sanitizedChildEnv } from './child-env.mjs';
 
 let webpush = null;
 try { ({ default: webpush } = await import('web-push')); } catch { /* optional until npm install */ }
@@ -64,7 +67,8 @@ const CLAUDE_MODEL_OVERRIDE = String(process.env.DWELL_CLAUDE_MODEL || '').trim(
 const GONG_MODEL = process.env.DWELL_GONG_MODEL || 'haiku';
 const PERMISSION_MODE = process.env.DWELL_PERMISSION_MODE || 'acceptEdits';
 const AUTH_TOKEN = process.env.DWELL_AUTH_TOKEN || '';
-const SERVER_VERSION = '0.6.0';
+const SERVER_VERSION = '0.6.1';
+const FCM_PACKAGE_NAME = 'com.xinwithyu.dwell';
 const MAX_BODY = 16 * 1024 * 1024;
 const MAX_TEXT = 600_000;
 const MAX_UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -91,7 +95,6 @@ const defaultState = {
   health: { device: '', metrics: {}, history: {}, at: 0 },
   usage: { days: {}, last: {} },
   gongSessionId: null,
-  notifications: { initialized: false, next: 0, chatMax: 0, taskSeen: {}, items: [] },
 };
 
 let state;
@@ -114,6 +117,8 @@ let nextSeq = 0;
 let activeRun = null;
 let server;
 let database;
+let fcmDispatcher;
+const fcmSender = createFcmSender();
 const events = [];
 const EVENT_LIMIT = 5000;
 const sseClients = new Set();
@@ -231,74 +236,88 @@ function notificationAt(value) {
   return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : now();
 }
 
-function addNotification(item) {
-  const feed = state.notifications;
-  const record = { id: ++nextSeq, ...item };
-  feed.next = record.id;
-  feed.items.push(record);
-  if (feed.items.length > 500) feed.items.splice(0, feed.items.length - 500);
-  return record;
+function notificationEnvelope(notification, deviceId = '') {
+  const notificationId = Number(notification.notification_id || notification.id);
+  return {
+    notification_epoch: database.notificationEpoch(),
+    device_id: deviceId,
+    id: notificationId,
+    notification_id: notificationId,
+    kind: notification.kind,
+    title: String(notification.title || 'Claude Cli').slice(0, 64),
+    body: String(notification.body || '').slice(0, 64),
+    route: String(notification.route || '').slice(0, 1024),
+    at: Number(notification.at) || now(),
+  };
 }
 
-function recordChatNotification(message) {
-  const feed = state.notifications;
-  if (!feed.initialized || message?.kind !== 'gu' || !message.seq) return 0;
-  const key = `chat:${message.seq}`;
-  const existing = feed.items.find(item => item.key === key);
-  if (existing) return Number(existing.id) || 0;
-  feed.chatMax = Math.max(Number(feed.chatMax) || 0, Number(message.seq) || 0);
-  return addNotification({
-    kind: 'chat', key, title: 'dwell', body: String(message.text || '').slice(0, 240),
-    at: Number(message.at) || now(), route: `chat/${encodeURIComponent(message.chatId || '')}`,
-  }).id;
+function emitDurableNotification(notification) {
+  const envelope = notificationEnvelope(notification);
+  emit({ type: 'notification', notification: envelope });
+  notifyWaiters();
+  return envelope;
+}
+
+async function recordChatNotification(message, run = null) {
+  if (message?.kind !== 'gu' || !message.seq || !run) return 0;
+  if (!run.completedSuccessfully || run.verificationStatus !== 'verified' || !isCurrentRun(run)) return 0;
+  const sender = await fcmSender.status();
+  if (!isCurrentRun(run)) return 0;
+  const result = database.commitAssistantCompletion({
+    attemptId: run?.attemptId || `message:${message.seq}`,
+    chatId: String(message.chatId || state.activeChatId || ''),
+    messageSeq: Number(message.seq),
+    completedAt: Number(message.at) || now(),
+    routeFingerprint: run?.routeFingerprint || 'unknown',
+    metadata: {
+      requested_model: run?.requestedModel || modelForCli(state.model) || state.model,
+      cli_init_model: run?.cliInitModel || '',
+      observed_runtime_model: run?.observedModel || '',
+      provider: run?.provider || 'claude-code',
+      attempt_id: run?.attemptId || '',
+      route_fingerprint: run?.routeFingerprint || '',
+      verification_status: run?.verificationStatus || 'unverified',
+    },
+    senderEnabled: sender.enabled && sender.configured,
+    senderPackageName: sender.package_name,
+    senderFirebaseAppId: sender.android_app_id,
+    event: {
+      eventKey: `chat:${message.seq}`,
+      kind: 'chat',
+      title: 'Claude Cli',
+      body: '回答已完成',
+      at: Number(message.at) || now(),
+      route: `chat/${encodeURIComponent(message.chatId || state.activeChatId || '')}`,
+    },
+    ttlSeconds: 3600,
+  });
+  if (result.created && result.notification) emitDurableNotification(result.notification);
+  return Number(result.notification?.notification_id || result.notification?.id || 0);
 }
 
 async function syncNotificationFeed() {
-  const feed = state.notifications;
   const taskView = await listDesktopTasks();
   const taskNames = new Map((taskView.items || []).map(task => [task.id, task.name || task.id]));
   const taskRuns = await recentCompletedTaskRuns([...taskNames.keys()]);
-  const maxMessageSeq = messages.reduce((max, message) => Math.max(max, Number(message.seq) || 0), 0);
-
-  if (!feed.initialized) {
-    feed.initialized = true;
-    feed.next = Math.max(Number(feed.next) || 0, nextSeq, maxMessageSeq);
-    feed.chatMax = maxMessageSeq;
-    feed.taskSeen = Object.fromEntries(taskRuns.map(run => [`${run.taskId}:${run.id}`, run.completedAt]));
-    await persistAll();
-    return [];
-  }
-
+  const sender = await fcmSender.status();
   const added = [];
-  const newMessages = messages
-    .filter(message => message.kind === 'gu' && Number(message.seq) > Number(feed.chatMax || 0))
-    .sort((a, b) => Number(a.seq) - Number(b.seq));
-  for (const message of newMessages) {
-    added.push(addNotification({
-      kind: 'chat', key: `chat:${message.seq}`, title: 'dwell', body: String(message.text || '').slice(0, 240),
-      at: Number(message.at) || now(), route: `chat/${encodeURIComponent(message.chatId || '')}`,
-    }));
-    feed.chatMax = Math.max(Number(feed.chatMax) || 0, Number(message.seq) || 0);
-  }
-
   for (const run of [...taskRuns].sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt))) {
-    const key = `${run.taskId}:${run.id}`;
-    if (feed.taskSeen[key]) continue;
-    feed.taskSeen[key] = run.completedAt;
-    const title = taskNames.get(run.taskId) || run.taskId;
-    const succeeded = run.status === 'success';
-    added.push(addNotification({
-      kind: 'task', key: `task:${key}`, title: `${title}${succeeded ? ' 已完成' : ' 运行失败'}`,
-      body: String(run.summary || (succeeded ? '任务运行完成，点此查看记录' : '任务没有正常完成，点此查看详情')).slice(0, 240),
-      at: notificationAt(run.completedAt), route: `task/${encodeURIComponent(run.taskId)}/${encodeURIComponent(run.id)}`,
-    }));
-  }
-  const seenEntries = Object.entries(feed.taskSeen).sort((a, b) => Date.parse(b[1]) - Date.parse(a[1])).slice(0, 600);
-  feed.taskSeen = Object.fromEntries(seenEntries);
-  if (added.length) {
-    await persistAll();
-    for (const notification of added) emit({ type: 'notification', notification });
-    notifyWaiters();
+    const status = ['success', 'failed', 'cancelled', 'interrupted'].includes(run.status) ? run.status : 'interrupted';
+    const title = status === 'success' ? '已完成' : status === 'failed' ? '运行失败' : status === 'cancelled' ? '已取消' : '已中断';
+    const result = database.observeTaskRunAndCreateNotification({
+      taskId: String(run.taskId), runId: String(run.id), observedAt: notificationAt(run.completedAt),
+      observation: { status, completed_at: run.completedAt, source: run.source || '' },
+      senderEnabled: sender.enabled && sender.configured,
+    senderPackageName: sender.package_name,
+    senderFirebaseAppId: sender.android_app_id,
+      ttlSeconds: 86400,
+      event: {
+        eventKey: `task:${run.taskId}:${run.id}`, kind: 'task', title,
+        body: '任务运行已结束', at: notificationAt(run.completedAt),
+        route: `task/${encodeURIComponent(run.taskId)}/${encodeURIComponent(run.id)}`,
+      },
+    });
+    if (result.created && result.notification) added.push(emitDurableNotification(result.notification));
   }
   return added;
 }
@@ -389,11 +408,33 @@ async function persistAll() {
   return queuePersist(() => database.saveSnapshot(snapshot));
 }
 
-async function appendMessage(record, chatId = state.activeChatId) {
+function isCurrentRun(run) {
+  return !!run && activeRun === run && !run.stopped && !run.superseded && !run.timedOut;
+}
+
+function routeFingerprint(provider, requestedModel, route = '') {
+  return crypto.createHash('sha256')
+    .update(`${String(provider || '')}|${String(requestedModel || '')}|${String(route || '')}`)
+    .digest('hex').slice(0, 32);
+}
+
+function observeRunModel(run, candidate, source = 'runtime') {
+  const observed = String(candidate || '').trim().slice(0, 200);
+  if (!run || !observed) return;
+  run.observedModel = observed;
+  run.modelObservationSource = String(source || 'runtime').slice(0, 40);
+  run.verificationStatus = 'verified';
+}
+
+async function appendMessage(record, chatId = state.activeChatId, run = null) {
+  if (run && !isCurrentRun(run)) return null;
   const item = { seq: ++nextSeq, at: now(), chatId, ...record };
   messages.push(item);
   if (item.kind === 'me') state.lastUserAt = item.at;
-  queuePersist(() => database.appendMessage(item));
+  queuePersist(() => {
+    if (run && !isCurrentRun(run)) return;
+    database.appendMessage(item);
+  });
   return item;
 }
 
@@ -436,11 +477,23 @@ function writeSse(res, event) {
   } catch { return false; }
 }
 
-function broadcastSse(event) {
-  for (const client of [...sseClients]) if (!writeSse(client.res, event)) sseClients.delete(client);
+function sseEventForClient(event, deviceId) {
+  if (event?.type !== 'notification.created') return event;
+  return {
+    ...event,
+    data: { ...event.data, device_id: String(deviceId || '') },
+  };
 }
 
-function emit(event) {
+function broadcastSse(event) {
+  for (const client of [...sseClients]) {
+    const visible = sseEventForClient(event, client.deviceId);
+    if (!writeSse(client.res, visible)) sseClients.delete(client);
+  }
+}
+
+function emit(event, run = null) {
+  if (run && !isCurrentRun(run)) return null;
   const cursor = ++nextSeq;
   const canonical = canonicalEvent(event, cursor);
   const item = { ...event, _cursor: cursor, _v2: canonical };
@@ -450,7 +503,7 @@ function emit(event) {
   return item;
 }
 
-function serveEventStream(req, res, url, origin) {
+function serveEventStream(req, res, url, origin, deviceId) {
   const requested = Number(req.headers['last-event-id'] || url.searchParams.get('since') || 0);
   const since = Number.isFinite(requested) && requested > 0 ? requested : 0;
   res.writeHead(200, {
@@ -466,9 +519,11 @@ function serveEventStream(req, res, url, origin) {
   if (since > 0 && since < earliest - 1) {
     writeSse(res, { id: nextSeq, at: now(), chat_id: state.activeChatId || '', type: 'resync.required', data: { reason: 'cursor_expired' } });
   } else {
-    for (const event of events) if (event._cursor > since) writeSse(res, event._v2);
+    for (const event of events) {
+      if (event._cursor > since) writeSse(res, sseEventForClient(event._v2, deviceId));
+    }
   }
-  const client = { res };
+  const client = { res, deviceId: String(deviceId || '') };
   sseClients.add(client);
   const heartbeat = setInterval(() => {
     if (res.destroyed || res.writableEnded) return cleanup();
@@ -508,14 +563,16 @@ async function load() {
     dataDir: DATA_DIR,
     defaults: { state: defaultState, apiAuth: { mode: 'subscription', base: '', models: {} } },
   });
+  fcmDispatcher = createFcmDispatcher({
+    database,
+    sender: fcmSender,
+    onError: error => console.error('[dwell] fcm dispatcher:', error.message),
+  });
   if (database.migration) console.log(`[dwell] migrated legacy data to SQLite; backup: ${database.migration.backup}`);
   const stored = database.loadSnapshot();
   state = { ...defaultState, ...(stored.state || {}) };
   state.health = { ...defaultState.health, ...(state.health || {}) };
   state.usage = { ...defaultState.usage, ...(state.usage || {}) };
-  state.notifications = { ...defaultState.notifications, ...(state.notifications || {}) };
-  state.notifications.taskSeen = state.notifications.taskSeen && typeof state.notifications.taskSeen === 'object' ? state.notifications.taskSeen : {};
-  state.notifications.items = Array.isArray(state.notifications.items) ? state.notifications.items : [];
   state.usage.days ||= {};
   state.usage.last ||= {};
   state.healthToken = state.healthToken || process.env.DWELL_HEALTH_TOKEN || crypto.randomBytes(18).toString('base64url');
@@ -541,7 +598,7 @@ async function load() {
   messages = stored.messages || [];
   nextSeq = Math.max(
     messages.reduce((n, item) => Math.max(n, Number(item.seq) || 0), 0),
-    Number(state.notifications.next) || 0,
+    database.latestNotificationId(),
   );
   if (!chats.length) {
     chats = [{ id: 'main', name: 'ShiJie', created: now(), last: now(), preview: '', current: true, archived: false, sessionId: null }];
@@ -605,7 +662,7 @@ function headers(origin) {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Dwell-Token',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Max-Age': '86400',
     'Cache-Control': 'no-store',
     Vary: 'Origin',
@@ -679,7 +736,8 @@ async function bodyJson(req) {
   catch { throw new Error('invalid json'); }
 }
 
-function recordUsage(raw = {}, cost = 0, failed = false) {
+function recordUsage(raw = {}, cost = 0, failed = false, run = null) {
+  if (run && !isCurrentRun(run)) return;
   const input = Number(raw.input_tokens ?? raw.prompt_tokens ?? 0) || 0;
   const output = Number(raw.output_tokens ?? raw.completion_tokens ?? 0) || 0;
   const cacheRead = Number(raw.cache_read_input_tokens ?? raw.cache_read_tokens ?? 0) || 0;
@@ -694,7 +752,21 @@ function recordUsage(raw = {}, cost = 0, failed = false) {
   current.cacheWrite += cacheWrite;
   current.cost += Number(cost || 0) || 0;
   state.usage.days[day] = current;
-  state.usage.last = { input, output, cacheRead, cacheWrite, at: now(), model: state.model };
+  state.usage.last = {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    at: now(),
+    model: run?.observedModel || '',
+    requested_model: run?.requestedModel || '',
+    cli_init_model: run?.cliInitModel || '',
+    observed_runtime_model: run?.observedModel || '',
+    provider: run?.provider || '',
+    attempt_id: run?.attemptId || '',
+    route_fingerprint: run?.routeFingerprint || '',
+    verification_status: run?.verificationStatus || 'unverified',
+  };
   const keep = Object.keys(state.usage.days).sort().slice(-35);
   state.usage.days = Object.fromEntries(keep.map(key => [key, state.usage.days[key]]));
   queuePersist(() => database.saveState(clone(state)));
@@ -706,7 +778,14 @@ function contextView() {
   const estimated = Math.round(JSON.stringify(current).length / 4);
   const used = Math.max(measured, estimated);
   const window = 200000;
-  return { ok: true, used, max: window, window, pct: Math.min(100, Math.round(used / window * 100)), model: state.usage.last?.model || state.model };
+  return {
+    ok: true,
+    used,
+    max: window,
+    window,
+    pct: Math.min(100, Math.round(used / window * 100)),
+    model: state.usage.last?.observed_runtime_model || state.usage.last?.model || '',
+  };
 }
 
 function usageView() {
@@ -792,13 +871,41 @@ function modelCatalog() {
   };
 }
 
+function modelFamily(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized.includes('opus')) return 'opus';
+  if (normalized.includes('sonnet')) return 'sonnet';
+  if (normalized.includes('haiku')) return 'haiku';
+  if (normalized.includes('fable')) return 'fable';
+  return normalized;
+}
+
+function modelRouteStatus(requestedModel, observedModel, verificationStatus) {
+  if (verificationStatus !== 'verified' || !observedModel) return 'unverified';
+  const requested = modelFamily(requestedModel);
+  const observed = modelFamily(observedModel);
+  if (!requested || requested === 'default') return 'unverified';
+  return requested === observed ? 'matched' : 'mismatch';
+}
+
 function modelView() {
   const catalog = modelCatalog();
   const selected = catalog.items.some(item => item.id === state.model) ? state.model : (catalog.items[0]?.id || '');
+  const last = state.usage.last || {};
+  const requestedModel = String(last.requested_model || modelForCli(state.model) || state.model || '').trim();
+  const preVerificationModel = String(last.cli_init_model || '').trim();
+  const observedRuntimeModel = String(last.observed_runtime_model || last.model || '').trim();
+  const verificationStatus = String(last.verification_status || (observedRuntimeModel ? 'verified' : 'unverified'));
   return {
     ok: true,
     model: selected,
-    runtime: state.usage.last?.model || '',
+    runtime: observedRuntimeModel,
+    requested_model: requestedModel,
+    pre_verification_model: preVerificationModel,
+    observed_runtime_model: observedRuntimeModel,
+    route_status: modelRouteStatus(requestedModel, observedRuntimeModel, verificationStatus),
+    verification_status: verificationStatus,
     effort: state.effort,
     efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     ...catalog,
@@ -960,6 +1067,9 @@ function assistantMetadata(run) {
 
 async function runApiProvider(prompt, attachments, run) {
   const request = providerRequest(apiAuth.base, prompt, attachments, true, '', run);
+  run.provider = `api-${request.kind}`;
+  run.requestedModel = String(request.body.model || '').slice(0, 200);
+  run.routeFingerprint = routeFingerprint(run.provider, run.requestedModel, request.endpoint);
   const headers = providerHeaders(request.kind, apiAuth.token, true);
   run.controller = new AbortController();
   run.timeout = setTimeout(() => {
@@ -972,62 +1082,91 @@ async function runApiProvider(prompt, attachments, run) {
   if (!String(response.headers.get('content-type') || '').toLowerCase().includes('text/event-stream')) {
     const raw = await response.text();
     let data; try { data = JSON.parse(raw); } catch { throw new Error('备用 API 返回的不是 JSON 或 SSE'); }
-    if (run.stopped || run.superseded) return;
+    if (!isCurrentRun(run)) return;
+    observeRunModel(run, data.model || data.model_id, 'provider_response');
     const providerError = providerErrorText(data);
     if (providerError) throw new Error(providerError);
     const text = providerResponseText(request.kind, data).trim();
     if (!text) throw new Error('备用 API 没有返回文本');
     if (text) {
       await emitProgressiveText(text, run);
-      const saved = await appendMessage({ kind: 'gu', text, ...assistantMetadata(run) }, run.chatId);
+      if (!isCurrentRun(run)) return;
+      const saved = await appendMessage({ kind: 'gu', text, ...assistantMetadata(run) }, run.chatId, run);
+      if (!saved || !isCurrentRun(run)) return;
       run.lastMessageSeq = saved.seq;
-      run.notificationId = recordChatNotification(saved);
-      emit({ type: 'assistant', message: { content: [{ type: 'text', text }] }, dwell_message_id: saved.seq, dwell_at: saved.at });
+      run.finalMessage = saved;
+      emit({ type: 'assistant', message: { content: [{ type: 'text', text }] }, dwell_message_id: saved.seq, dwell_at: saved.at }, run);
     }
-    recordUsage(data.usage || {}, 0, false);
+    recordUsage(data.usage || {}, 0, false, run);
     run.hadResult = true;
-    emit({ type: 'result', is_error: false, result: text, notification_id: run.notificationId || 0 });
+    run.resultHasText = true;
+    run.resultError = false;
+    run.completedSuccessfully = !!run.finalMessage
+      && !run.timedOut
+      && !run.stopped
+      && !run.superseded
+      && run.verificationStatus === 'verified'
+      && isCurrentRun(run);
+    if (run.completedSuccessfully) run.notificationId = await recordChatNotification(run.finalMessage, run);
+    emit({ type: 'result', is_error: false, result: text, notification_id: run.notificationId || 0 }, run);
     notifyWaiters();
     return;
   }
-  let buffer = '', text = '', usage = {};
+  let buffer = '', text = '', usage = {}, streamCompleted = false;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const feed = raw => {
-    if (run.stopped || run.superseded) return;
+    if (!isCurrentRun(run)) return;
     buffer += raw;
     const lines = buffer.split(/\r?\n/); buffer = lines.pop() || '';
     for (const line of lines) {
       if (!line.startsWith('data:')) continue;
-      const value = line.slice(5).trim(); if (!value || value === '[DONE]') continue;
+      const value = line.slice(5).trim();
+      if (!value) continue;
+      if (value === '[DONE]') { streamCompleted = true; continue; }
       let data; try { data = JSON.parse(value); } catch { continue; }
+      observeRunModel(run, data.model || data.model_id || data.message?.model, 'provider_stream');
       const providerError = providerErrorText(data);
       if (providerError) { run.providerError = providerError; continue; }
       if (data.usage) usage = { ...usage, ...data.usage };
       if (data.message?.usage) usage = { ...usage, ...data.message.usage };
+      if (data.type === 'message_stop' || data.type === 'message_end' || data.event === 'message_stop') streamCompleted = true;
+      const choice = data.choices?.[0];
+      if (choice?.finish_reason != null) streamCompleted = true;
       let delta = '';
       if (request.kind === 'anthropic') delta = data.delta?.text || '';
-      else delta = data.choices?.[0]?.delta?.content || '';
+      else delta = choice?.delta?.content || '';
       if (!delta) continue;
       text += delta;
-      emit({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: delta } } });
+      emit({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: delta } } }, run);
       notifyWaiters();
     }
   };
   while (true) { const part = await reader.read(); if (part.done) break; feed(decoder.decode(part.value, { stream: true })); }
-  feed(decoder.decode());
-  if (run.stopped || run.superseded) return;
+  feed(`${decoder.decode()}\n`);
+  if (!isCurrentRun(run)) return;
   if (run.providerError) throw new Error(run.providerError);
+  if (!streamCompleted) throw new Error('备用 API 流没有终止事件');
   if (!text.trim()) throw new Error('备用 API 没有返回文本');
   if (text.trim()) {
-    const saved = await appendMessage({ kind: 'gu', text: text.trim(), ...assistantMetadata(run) }, run.chatId);
+    const saved = await appendMessage({ kind: 'gu', text: text.trim(), ...assistantMetadata(run) }, run.chatId, run);
+    if (!saved || !isCurrentRun(run)) return;
     run.lastMessageSeq = saved.seq;
-    run.notificationId = recordChatNotification(saved);
-    emit({ type: 'assistant', message: { content: [{ type: 'text', text: text.trim() }] }, dwell_message_id: saved.seq, dwell_at: saved.at });
+    run.finalMessage = saved;
+    emit({ type: 'assistant', message: { content: [{ type: 'text', text: text.trim() }] }, dwell_message_id: saved.seq, dwell_at: saved.at }, run);
   }
-  recordUsage(usage, 0, false);
+  recordUsage(usage, 0, false, run);
   run.hadResult = true;
-  emit({ type: 'result', is_error: false, result: text.trim(), notification_id: run.notificationId || 0 });
+  run.resultHasText = true;
+  run.resultError = false;
+  run.completedSuccessfully = !!run.finalMessage
+    && !run.timedOut
+    && !run.stopped
+    && !run.superseded
+    && run.verificationStatus === 'verified'
+    && isCurrentRun(run);
+  if (run.completedSuccessfully) run.notificationId = await recordChatNotification(run.finalMessage, run);
+  emit({ type: 'result', is_error: false, result: text.trim(), notification_id: run.notificationId || 0 }, run);
   notifyWaiters();
 }
 
@@ -1061,7 +1200,7 @@ async function claudeOnce(prompt) {
   try {
     ({ stdout } = await execFileAsync(CLAUDE_BIN, args, {
       cwd: WORKSPACE,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: sanitizedChildEnv({ executionPath: CLAUDE_BIN, explicit: { NO_COLOR: '1' } }),
       timeout: Math.min(CLAUDE_TIMEOUT_MS, 180000),
       maxBuffer: 8 * 1024 * 1024,
     }));
@@ -1095,18 +1234,21 @@ function messagePartsFromAssistant(message) {
 
 async function emitProgressiveText(text, run) {
   const value = String(text || '');
-  if (!value || run.stopped || run.superseded) return;
+  if (!value || run.timedOut || !isCurrentRun(run)) return;
   const chunkSize = Math.max(12, Math.ceil(value.length / 220));
   for (let offset = 0; offset < value.length; offset += chunkSize) {
-    if (run.stopped || run.superseded) return;
+    if (run.timedOut || !isCurrentRun(run)) return;
     const chunk = value.slice(offset, offset + chunkSize);
-    emit({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: chunk } }, synthetic: true });
+    emit({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: chunk } }, synthetic: true }, run);
     notifyWaiters();
     if (offset + chunkSize < value.length) await new Promise(resolve => setTimeout(resolve, 16));
   }
 }
 
 async function runClaude(prompt, attachments, run) {
+  run.provider = 'claude-code';
+  run.requestedModel = String(modelForCli(state.model) || state.model || 'default').slice(0, 200);
+  run.routeFingerprint = routeFingerprint(run.provider, run.requestedModel, CLAUDE_BIN);
   const chat = chatRecord(run.chatId);
   const priorSession = chat?.sessionId || '';
   const firstTurn = !priorSession;
@@ -1116,9 +1258,10 @@ async function runClaude(prompt, attachments, run) {
   if (chat?.source === 'claude-code' && chat.cwd && path.isAbsolute(chat.cwd)) {
     try { if ((await fsp.stat(chat.cwd)).isDirectory()) workingDirectory = chat.cwd; } catch {}
   }
+  if (!isCurrentRun(run)) return;
   const child = spawn(CLAUDE_BIN, cliArgs(fullPrompt, firstTurn, run.chatId, run.sessionId, workingDirectory), {
     cwd: workingDirectory,
-    env: { ...process.env, NO_COLOR: '1' },
+    env: sanitizedChildEnv({ executionPath: CLAUDE_BIN, explicit: { NO_COLOR: '1' } }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   run.child = child;
@@ -1142,7 +1285,14 @@ async function runClaude(prompt, attachments, run) {
     if (!line.trim()) return;
     let data;
     try { data = JSON.parse(line); } catch { return; }
-    if (run.superseded || run.stopped) return;
+    if (run.timedOut || !isCurrentRun(run)) return;
+    const observedCandidate = data.model || data.model_id || data.message?.model;
+    if (data.type === 'system' && data.subtype === 'init') {
+      run.cliInitModel = String(observedCandidate || '').trim().slice(0, 200);
+      observeRunModel(run, observedCandidate, 'cli_init');
+    } else {
+      observeRunModel(run, observedCandidate, data.type === 'result' ? 'cli_result' : 'cli_runtime');
+    }
     if (data.session_id && ((data.type === 'system' && data.subtype === 'init') || data.type === 'result')) {
       run.sessionId = data.session_id;
       if (state.activeChatId === run.chatId) state.sessionId = data.session_id;
@@ -1152,14 +1302,18 @@ async function runClaude(prompt, attachments, run) {
     }
     if (data.type === 'result') {
       run.hadResult = true;
-      run.resultError = !!data.is_error;
+      const hasResultText = typeof data.result === 'string' && data.result.trim().length > 0;
+      run.resultHasText = hasResultText;
+      run.resultError = !!data.is_error || !hasResultText;
       const errorDetail = Array.isArray(data.errors)
         ? data.errors.filter(item => item && !String(item).startsWith('[ede_diagnostic]')).join('；')
         : '';
-      run.resultEvent = data.is_error && !data.result
-        ? { ...data, result: errorDetail || `Claude Code 没有完成这次请求（${data.subtype || '执行错误'}）` }
-        : data;
-      recordUsage(data.usage || {}, data.total_cost_usd || 0, !!data.is_error);
+      run.resultEvent = data.is_error
+        ? (data.result ? data : { ...data, result: errorDetail || `Claude Code 没有完成这次请求（${data.subtype || '执行错误'}）` })
+        : (hasResultText
+          ? data
+          : { ...data, is_error: true, result: errorDetail || 'Claude Code 没有返回最终结果' });
+      recordUsage(data.usage || {}, data.total_cost_usd || 0, run.resultError, run);
       usageRecorded = true;
     }
     if (data.type === 'result' && typeof data.result === 'string' && data.result.trim()) finalText = data.result.trim();
@@ -1171,57 +1325,105 @@ async function runClaude(prompt, attachments, run) {
     if (data.type === 'assistant') {
       sawAssistant = true;
       for (const part of messagePartsFromAssistant(data.message)) {
-        if (part.kind === 'think' && part.text) await appendMessage(part, run.chatId);
+        if (!isCurrentRun(run)) return;
+        if (part.kind === 'think' && part.text) {
+          await appendMessage(part, run.chatId, run);
+          if (!isCurrentRun(run)) return;
+        }
         if (part.kind === 'gu' && part.text) {
           if (!sawTextDelta) await emitProgressiveText(part.text, run);
-          const saved = await appendMessage({ ...part, ...assistantMetadata(run) }, run.chatId);
+          if (!isCurrentRun(run)) return;
+          const saved = await appendMessage({ ...part, ...assistantMetadata(run) }, run.chatId, run);
+          if (!saved || !isCurrentRun(run)) return;
           run.lastMessageSeq = saved.seq;
-          run.notificationId = recordChatNotification(saved);
+          run.finalMessage = saved;
           data.dwell_message_id = saved.seq;
           data.dwell_at = saved.at;
         }
-        if (part.kind === 'tool') await appendMessage(part, run.chatId);
+        if (part.kind === 'tool') {
+          await appendMessage(part, run.chatId, run);
+          if (!isCurrentRun(run)) return;
+        }
       }
     }
     const visible = data.type === 'stream_event' || data.type === 'assistant' || data.type === 'user'
       || (data.type === 'system' && ['init', 'newchat', 'switched', 'stopped', 'restart', 'model'].includes(data.subtype));
-    if (visible) { emit(data); notifyWaiters(); }
+    if (visible && isCurrentRun(run)) { emit(data, run); notifyWaiters(); }
   };
   lines.on('line', line => { lineQueue = lineQueue.then(() => processLine(line)); });
 
   const timeout = setTimeout(() => {
-    if (child.exitCode === null) child.kill('SIGTERM');
-    setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 3000).unref();
+    if (child.exitCode === null) {
+      run.timedOut = true;
+      child.kill('SIGTERM');
+      setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 3000).unref();
+    }
   }, CLAUDE_TIMEOUT_MS);
 
   await new Promise(resolve => child.once('close', resolve));
   clearTimeout(timeout);
   await lineQueue;
   lines.close();
-  if (firstTurn && !run.stopped && !run.superseded && !spawnError && child.exitCode === 0 && !run.resultError) {
+  if (run.superseded || run.stopped || activeRun !== run) return;
+  if (firstTurn && !run.timedOut && !spawnError && child.exitCode === 0 && !run.resultError) {
     const chat = chatRecord(run.chatId);
     if (chat && !chat.sessionId) chat.sessionId = run.sessionId;
     if (state.activeChatId === run.chatId) state.sessionId = run.sessionId;
   }
-  if (!sawAssistant && finalThinking.trim()) await appendMessage({ kind: 'think', text: finalThinking.trim() }, run.chatId);
-  if (!sawAssistant && finalText.trim()) {
-    const saved = await appendMessage({ kind: 'gu', text: finalText.trim(), ...assistantMetadata(run) }, run.chatId);
+  if (!run.timedOut && finalThinking.trim()) {
+    await appendMessage({ kind: 'think', text: finalThinking.trim() }, run.chatId, run);
+    if (!isCurrentRun(run)) return;
+  }
+  if (!run.timedOut && !run.finalMessage && !run.resultError && run.resultHasText && finalText.trim()) {
+    const saved = await appendMessage({ kind: 'gu', text: finalText.trim(), ...assistantMetadata(run) }, run.chatId, run);
+    if (!saved || !isCurrentRun(run)) return;
     run.lastMessageSeq = saved.seq;
-    run.notificationId = recordChatNotification(saved);
+    run.finalMessage = saved;
   }
-  if (run.resultEvent && !run.stopped && !run.superseded) {
-    emit({ ...run.resultEvent, notification_id: run.notificationId || 0 });
-    notifyWaiters();
-  }
-  if (run.silent && finalText.trim() && !run.stopped) await pushToSubscribers('dwell', finalText.slice(0, 240));
-  if ((spawnError || child.exitCode !== 0) && !run.stopped && !run.resultEvent) {
-    const detail = spawnError
-      ? `Claude Code 启动失败：${spawnError.message || '找不到可执行程序'}`
-      : stderr.join('').trim() || `claude exited with code ${child.exitCode}`;
-    if (!usageRecorded) recordUsage({}, 0, true);
+  const processFailure = spawnError || child.exitCode !== 0 || run.timedOut;
+  if (processFailure && !run.resultError) {
     run.hadResult = true;
-    emit({ type: 'result', is_error: true, result: detail.slice(-4000) });
+    const detail = run.timedOut
+      ? 'Claude Code 请求超时'
+      : spawnError
+        ? `Claude Code 启动失败：${spawnError.message || '找不到可执行程序'}`
+        : stderr.join('').trim() || `claude exited with code ${child.exitCode}`;
+    run.resultError = true;
+    run.resultEvent = { type: 'result', is_error: true, result: detail.slice(-4000) };
+  }
+  if (!run.resultEvent && processFailure) {
+    const detail = run.timedOut
+      ? 'Claude Code 请求超时'
+      : spawnError
+        ? `Claude Code 启动失败：${spawnError.message || '找不到可执行程序'}`
+        : stderr.join('').trim() || `claude exited with code ${child.exitCode}`;
+    run.hadResult = true;
+    run.resultError = true;
+    run.resultEvent = { type: 'result', is_error: true, result: detail.slice(-4000) };
+    if (!usageRecorded) recordUsage({}, 0, true, run);
+  }
+  const successful = isCurrentRun(run)
+    && !run.timedOut
+    && !run.stopped
+    && !run.superseded
+    && child.exitCode === 0
+    && !spawnError
+    && run.hadResult
+    && run.resultHasText
+    && !run.resultError
+    && !!run.finalMessage?.text?.trim()
+    && run.verificationStatus === 'verified';
+  run.completedSuccessfully = successful;
+  if (successful) run.notificationId = await recordChatNotification(run.finalMessage, run);
+  if (run.resultEvent && (isCurrentRun(run) || run.timedOut)) {
+    emit(
+      { ...run.resultEvent, notification_id: run.notificationId || 0 },
+      run.timedOut ? null : run,
+    );
     notifyWaiters();
+  }
+  if (run.completedSuccessfully && isCurrentRun(run) && run.silent && run.finalMessage?.text?.trim()) {
+    await pushToSubscribers('dwell', run.finalMessage.text.slice(0, 240));
   }
 }
 
@@ -1258,7 +1460,7 @@ async function wakeTick() {
 async function startTurn(text, attachments = [], options = {}) {
   if (activeRun) { activeRun.superseded = true; stopRun(); }
   const userText = String(text || '').trim();
-  if (!state.notifications.initialized) await syncNotificationFeed();
+  await syncNotificationFeed();
   if (state.armed) {
     state.armed = false;
     state.sessionId = null;
@@ -1286,42 +1488,63 @@ async function startTurn(text, attachments = [], options = {}) {
   state.busy = true;
   await persistAll();
   const run = {
+    attemptId: crypto.randomUUID(),
     child: null, controller: null, timeout: null, timedOut: false, stopped: false,
     superseded: false, silent: !!options.silent, started: Date.now(), chatId: turnChatId,
     userSeq: userMessage?.seq || Number(options.userSeq) || Number.MAX_SAFE_INTEGER,
     notificationId: 0,
+    requestedModel: '', cliInitModel: '', observedModel: '', provider: '', routeFingerprint: '',
+    verificationStatus: 'unverified', finalMessage: null, completedSuccessfully: false,
+    hadResult: false, resultError: false, resultHasText: false,
     variantOf: Number(options.variantOf) || 0,
     variantVersion: Number(options.variantVersion) || 0,
   };
   activeRun = run;
   const runner = apiAuth.mode === 'api' && apiAuth.base ? runApiProvider : runClaude;
   runner(runnerText, attachments, run).catch(error => {
-    if (run.superseded) return;
+    if (run.superseded || activeRun !== run) return;
     if (run.stopped) {
       run.hadResult = true;
+      run.completedSuccessfully = false;
       run.stopNotified = true;
       emit({ type: 'system', subtype: 'stopped', text: '（我停下了）' });
       notifyWaiters();
       return;
     }
-    recordUsage({}, 0, true);
+    recordUsage({}, 0, true, run);
     run.hadResult = true;
-    emit({ type: 'result', is_error: true, result: run.timedOut ? '备用 API 请求超时' : (error.message || 'Claude Code 没有启动') });
+    run.resultError = true;
+    run.completedSuccessfully = false;
+    const timeoutMessage = run.provider.startsWith('api-') ? '备用 API 请求超时' : 'Claude Code 请求超时';
+    emit(
+      { type: 'result', is_error: true, result: run.timedOut ? timeoutMessage : (error.message || 'Claude Code 没有启动') },
+      run.timedOut ? null : run,
+    );
     notifyWaiters();
   }).finally(async () => {
     if (run.timeout) clearTimeout(run.timeout);
     if (activeRun !== run) return;
+    if (run.stopped && !run.superseded && !run.stopNotified) {
+      run.hadResult = true;
+      run.completedSuccessfully = false;
+      emit({ type: 'system', subtype: 'stopped', text: '（我停下了）' });
+      notifyWaiters();
+    }
+    if (!run.hadResult && !run.stopped && !run.superseded) {
+      run.hadResult = true;
+      run.resultError = true;
+      run.completedSuccessfully = false;
+      emit(
+        { type: 'result', is_error: true, result: 'Claude Code 没有返回最终结果' },
+        run.timedOut ? null : run,
+      );
+      notifyWaiters();
+    }
     activeRun = null;
     state.busy = false;
     const runChat = chatRecord(run.chatId);
     if (runChat) runChat.last = now();
     await persistAll();
-    if (run.stopped && !run.superseded && !run.stopNotified) {
-      run.hadResult = true;
-      emit({ type: 'system', subtype: 'stopped', text: '（我停下了）' });
-      notifyWaiters();
-    }
-    if (!run.hadResult) { emit({ type: 'result', is_error: false, result: '' }); notifyWaiters(); }
   });
 }
 
@@ -1388,7 +1611,12 @@ function currentMessages(before, limit) {
 }
 
 async function git(args) {
-  return execFileAsync('git', args, { cwd: WORKSPACE, maxBuffer: 8 * 1024 * 1024, timeout: 10000 });
+  return execFileAsync('git', args, {
+    cwd: WORKSPACE,
+    env: sanitizedChildEnv({ executionPath: 'git' }),
+    maxBuffer: 8 * 1024 * 1024,
+    timeout: 10000,
+  });
 }
 
 async function repoLog(url) {
@@ -1559,17 +1787,64 @@ async function handleApiV2(req, res, url, origin, auth) {
   }
   if (!auth) return bad(res, 401, 'device_pairing_required', origin);
 
-  if (method === 'GET' && route === 'events') return serveEventStream(req, res, url, origin);
+  if (method === 'GET' && route === 'events') return serveEventStream(req, res, url, origin, auth.deviceId);
   if (method === 'GET' && route === 'bootstrap') {
     return ok(res, {
       ok: true,
       version: SERVER_VERSION,
       server_time: now(),
+      device_id: auth.deviceId,
+      notification_epoch: database.notificationEpoch(),
       status: { busy: !!activeRun || !!state.busy, armed: !!state.armed, active_chat_id: state.activeChatId, workspace: WORKSPACE, claude: CLAUDE_BIN },
       model: modelView(),
       chats: await chatItems('all'),
       messages: messagesForChat(state.activeChatId, 0, 120),
-      capabilities: { sse: true, pairing: true, tasks: true, voice: 'android-native', notifications: 'workmanager' },
+      capabilities: { sse: true, pairing: true, tasks: true, voice: 'android-native', notifications: 'durable', fcm: (await fcmSender.status()).enabled },
+    }, origin);
+  }
+  if (method === 'GET' && route === 'notifications/baseline') {
+    const baseline = database.notificationBaseline();
+    return ok(res, { ok: true, device_id: auth.deviceId, notification_epoch: baseline.notificationEpoch, latest: baseline.latest }, origin);
+  }
+  if (method === 'PUT' && route === 'devices/me/push-token') {
+    if (auth.kind !== 'device') return bad(res, 403, 'device_auth_required', origin);
+    const data = await bodyJson(req);
+    const provider = String(data.provider || '');
+    const token = String(data.token || '');
+    const packageName = String(data.package_name || '');
+    const appVersion = String(data.app_version || '');
+    const firebaseAppId = String(data.firebase_app_id || '');
+    if (provider !== 'fcm') return bad(res, 400, 'invalid_push_provider', origin);
+    if (!token || /[\x00-\x1f\x7f]/.test(token) || Buffer.byteLength(token, 'utf8') > 4096) return bad(res, 400, 'invalid_push_token', origin);
+    if (packageName !== FCM_PACKAGE_NAME) return bad(res, 400, 'invalid_package_name', origin);
+    if (!appVersion || Buffer.byteLength(appVersion, 'utf8') > 64) return bad(res, 400, 'invalid_app_version', origin);
+    if (!firebaseAppId || Buffer.byteLength(firebaseAppId, 'utf8') > 256) return bad(res, 400, 'invalid_firebase_app_id', origin);
+    const sender = await fcmSender.status();
+    const senderBinding = fcmSender.validateBinding({ packageName, firebaseAppId }, sender);
+    if (!senderBinding.ok) return bad(res, 400, senderBinding.code, origin);
+    const binding = database.registerPushToken({
+      deviceId: auth.deviceId, token, tokenHash: tokenHash(token), packageName,
+      appVersion, firebaseAppId, at: now(),
+    });
+    if (!binding.ok) return bad(res, 409, binding.error, origin);
+    return ok(res, {
+      ok: true, device_id: auth.deviceId, registered: true, new_binding: !!binding.newBinding,
+      sender: { enabled: sender.enabled, configured: sender.configured, health: sender.health, project_match: sender.project_match },
+    }, origin);
+  }
+  if (method === 'DELETE' && route === 'devices/me/push-token') {
+    if (auth.kind !== 'device') return bad(res, 403, 'device_auth_required', origin);
+    database.unregisterPushToken(auth.deviceId, now());
+    return ok(res, { ok: true, registered: false }, origin);
+  }
+  if (method === 'GET' && route === 'devices/me/push-status') {
+    if (auth.kind !== 'device') return bad(res, 403, 'device_auth_required', origin);
+    const sender = await fcmSender.status();
+    const status = database.pushStatus(auth.deviceId);
+    return ok(res, {
+      ok: true, device_id: auth.deviceId, registered: status.registered,
+      sender: { enabled: sender.enabled, configured: sender.configured, health: sender.health, project_match: sender.project_match },
+      token: status.token, pending: status.pending,
     }, origin);
   }
   if (method === 'GET' && route === 'devices') return ok(res, { ok: true, items: database.listDevices() }, origin);
@@ -1704,14 +1979,27 @@ async function handleApiV2(req, res, url, origin, auth) {
     return ok(res, result, origin);
   }
   if (method === 'GET' && route === 'notifications') {
-    const since = Math.max(Number(url.searchParams.get('since') || 0), 0);
     await syncNotificationFeed();
-    return ok(res, { ok: true, next: Number(state.notifications.next) || since, items: state.notifications.items.filter(item => Number(item.id) > since).slice(-50) }, origin);
+    const sinceRaw = url.searchParams.get('since');
+    const limitRaw = url.searchParams.get('limit');
+    const orderRaw = url.searchParams.get('order');
+    if ((sinceRaw != null && !/^\\d+$/.test(sinceRaw)) || (sinceRaw != null && Number(sinceRaw) > Number.MAX_SAFE_INTEGER)) return bad(res, 400, 'invalid_pagination', origin);
+    if ((limitRaw != null && !/^\\d+$/.test(limitRaw)) || (limitRaw != null && (Number(limitRaw) < 1 || Number(limitRaw) > 100))) return bad(res, 400, 'invalid_pagination', origin);
+    if (orderRaw != null && orderRaw !== 'asc') return bad(res, 400, 'invalid_pagination', origin);
+    const since = Number(sinceRaw || 0);
+    const limit = Number(limitRaw || 50);
+    const ordered = orderRaw === 'asc';
+    const page = database.listNotificationsAfter({ since, limit, order: ordered ? 'asc' : 'desc' });
+    const items = (ordered ? page.items : page.items.reverse()).map(item => notificationEnvelope(item, auth?.deviceId || ''));
+    return ok(res, {
+      ok: true, notification_epoch: database.notificationEpoch(), next: ordered ? page.next : page.latest,
+      latest: page.latest, has_more: ordered ? page.hasMore : false, items,
+    }, origin);
   }
   return bad(res, 404, 'not_found', origin);
 }
 
-async function handleApi(req, res, url, origin) {
+async function handleApi(req, res, url, origin, auth = null) {
   const method = req.method || 'GET';
   const pathname = url.pathname.replace(/^\/api\/?/, '').replace(/\/$/, '');
   const parts = pathname.split('/').filter(Boolean);
@@ -1937,8 +2225,11 @@ async function handleApi(req, res, url, origin) {
   if (route === 'notifications' && method === 'GET') {
     const since = Math.max(Number(url.searchParams.get('since') || 0), 0);
     await syncNotificationFeed();
-    const items = state.notifications.items.filter(item => Number(item.id) > since).slice(-30);
-    return ok(res, { ok: true, next: Number(state.notifications.next) || since, items }, origin);
+    const page = database.listNotificationsAfter({ since, limit: 30, order: 'desc' });
+    return ok(res, {
+      ok: true, notification_epoch: database.notificationEpoch(), next: page.latest,
+      items: page.items.reverse().map(item => notificationEnvelope(item, auth?.deviceId || '')),
+    }, origin);
   }
   if (route === 'wake' && method === 'GET') return ok(res, wakeView(), origin);
   if (route === 'wake' && method === 'POST') { const data = await bodyJson(req); state.wakeOn = !!data.on; await persistAll(); return ok(res, wakeView(), origin); }
@@ -2062,10 +2353,13 @@ async function handle(req, res) {
       }
       return await handleApiV2(req, res, url, origin, auth);
     }
-    if (url.pathname.startsWith('/api/') && !independentHealthUpload && !authenticate(req, { allowOpenLegacy: true })) {
+    const legacyAuth = url.pathname.startsWith('/api/') && !independentHealthUpload
+      ? authenticate(req, { allowOpenLegacy: true })
+      : null;
+    if (url.pathname.startsWith('/api/') && !independentHealthUpload && !legacyAuth) {
       return bad(res, 401, 'unauthorized', origin);
     }
-    if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url, origin);
+    if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url, origin, legacyAuth);
     return await serveStatic(req, res, url, origin);
   } catch (error) {
     console.error('[dwell]', req.method, url.pathname, error.message);
@@ -2075,6 +2369,7 @@ async function handle(req, res) {
 }
 
 await load();
+await fcmDispatcher.start();
 const wakeTimer = setInterval(() => { wakeTick().catch(error => console.error('[dwell] wake:', error.message)); }, 90 * 1000);
 wakeTimer.unref();
 const notificationTimer = setInterval(() => {
@@ -2101,6 +2396,8 @@ async function shutdown(signal) {
   sseClients.clear();
   stopRun();
   await persistQueue;
+  try { await fcmDispatcher?.stop(); } catch (error) { console.error('[dwell] fcm dispatcher stop:', error.message); }
+  try { await fcmSender.close(); } catch (error) { console.error('[dwell] fcm sender close:', error.message); }
   try { database?.close(); } catch (error) { console.error('[dwell] sqlite close:', error.message); }
   server?.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();

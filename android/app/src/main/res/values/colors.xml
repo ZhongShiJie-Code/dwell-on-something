@@ -2,4 +2,5 @@
 <resources>
     <color name="dwell_accent">#C96442</color>
     <color name="dwell_bg">#FAF9F5</color>
+    <color name="dwell_bg_dark">#242422</color>
 </resources>

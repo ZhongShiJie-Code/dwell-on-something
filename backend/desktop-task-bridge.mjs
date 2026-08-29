@@ -7,6 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { sanitizedChildEnv } from './child-env.mjs';
 
 const profileRoot = path.resolve(process.env.DWELL_CLAUDE_PROFILE || path.join(os.homedir(), 'Library/Application Support/Claude-3p'));
 const explicitTaskFile = process.env.DWELL_CLAUDE_TASKS_FILE || '';
@@ -153,7 +154,10 @@ function declaredOutputFiles(prompt) {
 
 async function callHostTaskTool(name, args, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn(nodeBin, [hostTasksMcp], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    const child = spawn(nodeBin, [hostTasksMcp], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: sanitizedChildEnv({ executionPath: nodeBin }),
+    });
     let buffer = '';
     let stderr = '';
     let settled = false;
@@ -298,7 +302,7 @@ async function runWorker(taskId, runId) {
 
   const child = spawn(claudeBin, args, {
     cwd: task.filePath ? path.dirname(task.filePath) : os.homedir(),
-    env: { ...process.env, NO_COLOR: '1' },
+    env: sanitizedChildEnv({ executionPath: claudeBin, explicit: { NO_COLOR: '1' } }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const stdout = [];
@@ -359,7 +363,7 @@ async function queueRun(taskId) {
   const child = spawn(process.execPath, [workerFile, '--worker', taskId, runId], {
     detached: true,
     stdio: 'ignore',
-    env: process.env,
+    env: sanitizedChildEnv({ executionPath: process.execPath }),
   });
   child.unref();
   await updateRun(taskId, runId, { status: 'queued', result: 'running', pid: child.pid });

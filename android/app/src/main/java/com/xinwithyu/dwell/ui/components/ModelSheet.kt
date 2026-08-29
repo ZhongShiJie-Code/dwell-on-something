@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,26 +22,52 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.xinwithyu.dwell.core.model.ModelView
 
 @Composable
 fun ModelSheet(visible: Boolean, model: ModelView, onSelect: (String, String) -> Unit, onDismiss: () -> Unit) {
+    val requested = model.requestedModel.ifBlank { model.resolved.ifBlank { model.model } }
+    val observed = model.observedRuntimeModel.ifBlank { model.runtime }
+    val verified = model.verificationStatus == "verified" && observed.isNotBlank()
+    val routeLabel = when (model.routeStatus) {
+        "matched" -> "已验证"
+        "mismatch" -> "路由异常"
+        else -> "尚未验证"
+    }
     DwellSheet(visible, onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Text("选择模型", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 10.dp))
+            Text("请求模型：${requested.ifBlank { "尚未设置" }}", style = MaterialTheme.typography.bodyMedium)
             Text(
-                if (model.runtime.isNotBlank()) "实际运行：${model.runtime}" else "${model.provider} · ${model.resolved}",
+                "验证前实际模型：${model.preVerificationModel.ifBlank { "尚未验证" }}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "验证后实际模型：${if (verified) observed else "尚未验证"}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "异常状态：$routeLabel",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (model.routeStatus == "mismatch") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(14.dp))
             model.items.forEach { item ->
                 val selected = item.id == model.model
                 Row(
-                    Modifier.fillMaxWidth().clickable(enabled = !model.locked && !selected) {
-                        onSelect(item.id, model.effort); onDismiss()
-                    }.padding(vertical = 12.dp),
+                    Modifier.fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .semantics { this.selected = selected }
+                        .clickable(role = Role.RadioButton, enabled = !model.locked && !selected) {
+                            onSelect(item.id, model.effort); onDismiss()
+                        }
+                        .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     androidx.compose.foundation.layout.Box(
@@ -63,9 +90,11 @@ fun ModelSheet(visible: Boolean, model: ModelView, onSelect: (String, String) ->
                         val selected = effort == model.effort
                         Text(
                             effort,
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                .padding(end = 8.dp)
+                                .semantics { this.selected = selected }
                                 .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
-                                .clickable(enabled = !model.locked && !selected) { onSelect(model.model, effort); onDismiss() }
+                                .clickable(role = Role.RadioButton, enabled = !model.locked && !selected) { onSelect(model.model, effort); onDismiss() }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.labelLarge,

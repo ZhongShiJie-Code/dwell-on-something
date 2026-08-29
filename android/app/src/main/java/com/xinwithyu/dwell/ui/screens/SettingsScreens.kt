@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -46,8 +47,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.xinwithyu.dwell.BuildConfig
+import com.xinwithyu.dwell.core.model.PushStatusResponse
+import com.xinwithyu.dwell.core.notification.NotificationCoordinator
 import com.xinwithyu.dwell.core.repository.ConnectionState
 import com.xinwithyu.dwell.core.settings.AppSettings
 import com.xinwithyu.dwell.core.settings.ThemeMode
@@ -71,7 +76,7 @@ fun PairingScreen(
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 26.dp, vertical = 30.dp),
     ) {
-        Text("Dwell", fontFamily = DwellSerif, style = MaterialTheme.typography.displayLarge)
+        Text("Claude Cli", fontFamily = DwellSerif, style = MaterialTheme.typography.displayLarge)
         Text("连接你的 Mac", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(28.dp))
         Text("1. 在 Mac 的项目目录运行", style = MaterialTheme.typography.titleMedium)
@@ -85,7 +90,10 @@ fun PairingScreen(
         OutlinedTextField(remoteUrl, { remoteUrl = it }, label = { Text("Cloudflare 地址（外网）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(20.dp))
         Row(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.onBackground, RoundedCornerShape(18.dp)).clickable(enabled = code.length == 6 && !working) {
+            Modifier.fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .background(MaterialTheme.colorScheme.onBackground, RoundedCornerShape(18.dp))
+                .clickable(role = Role.Button, enabled = code.length == 6 && !working) {
                 working = true
                 scope.launch {
                     onPair(code, localUrl, remoteUrl, false).onFailure { localError = it.message.orEmpty() }
@@ -111,6 +119,7 @@ fun SettingsScreen(
     connection: ConnectionState,
     endpoint: String,
     backendVersion: String,
+    pushStatus: PushStatusResponse?,
     safeMode: Boolean,
     onBack: () -> Unit,
     onSaveConnection: suspend (String, String, Boolean) -> Unit,
@@ -133,8 +142,8 @@ fun SettingsScreen(
         }
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            DwellIconButton(Icons.Outlined.ArrowBack, "返回", onBack)
+        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 70.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            DwellIconButton(Icons.AutoMirrored.Outlined.ArrowBack, "返回", onBack)
             Text("设置", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 10.dp)) {
@@ -167,7 +176,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "保存并重连",
-                        modifier = Modifier.background(MaterialTheme.colorScheme.onBackground, RoundedCornerShape(14.dp)).clickable {
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                            .background(MaterialTheme.colorScheme.onBackground, RoundedCornerShape(14.dp))
+                            .clickable(role = Role.Button) {
                             scope.launch { onSaveConnection(localUrl, remoteUrl, preferRemote); onReconnect() }
                         }.padding(horizontal = 16.dp, vertical = 11.dp),
                         color = MaterialTheme.colorScheme.background,
@@ -192,7 +203,7 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsRow(Icons.Outlined.Sync, "后台补偿", "WorkManager · 最长约 15 分钟")
                     SettingsDivider()
-                    SettingsRow(Icons.Outlined.Bolt, "实时 FCM", "未配置 Firebase 凭据")
+                    SettingsRow(Icons.Outlined.Bolt, "实时 FCM", fcmStatusLabel(settings, pushStatus, context))
                 }
             }
             SettingsLabel("安全")
@@ -202,6 +213,20 @@ fun SettingsScreen(
             Spacer(Modifier.height(36.dp))
         }
     }
+}
+
+private fun fcmStatusLabel(settings: AppSettings, status: PushStatusResponse?, context: android.content.Context): String = when {
+    !BuildConfig.DWELL_FCM_ENABLED -> "APK 是 FCM disabled 模式"
+    !settings.notificationsEnabled -> "手机通知未开启"
+    !NotificationCoordinator.hasNotificationPermission(context) -> "系统权限阻止"
+    status == null -> "正在获取 Token"
+    !status.sender.enabled -> if (status.registered) "手机已注册 · Mac sender 未启用" else "手机未注册 · Mac sender 未启用"
+    status.sender.projectMatch.not() -> "Firebase app/project 不匹配"
+    status.token?.quarantineCode?.isNotBlank() == true -> "Token quarantine · ${status.token.quarantineCode}"
+    status.sender.health == "unavailable" -> "Mac sender 不可用"
+    !status.registered -> "Token 待上传"
+    status.pending > 0 -> "FCM 已连接 · 待发送 ${status.pending}"
+    else -> "FCM 已连接"
 }
 
 @Composable private fun SettingsLabel(value: String) { Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp, start = 6.dp)) }
@@ -219,7 +244,7 @@ private fun SettingsRow(
     onClick: (() -> Unit)? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 16.dp),
+        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.size(23.dp))

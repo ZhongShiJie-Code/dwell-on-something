@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 const LEGACY_FILES = [
   'state.json', 'messages.jsonl', 'chats.json', 'notes.json', 'todos.json',
   'calendar.json', 'diary.json', 'whisper.json', 'wall.json', 'nook.json',
@@ -158,7 +158,7 @@ function schema(db) {
       payload TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS notification_events (
-      id INTEGER PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       kind TEXT NOT NULL DEFAULT '',
       event_key TEXT,
       at INTEGER NOT NULL DEFAULT 0,
@@ -166,6 +166,55 @@ function schema(db) {
       payload TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_notification_events_at ON notification_events(at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_events_event_key
+      ON notification_events(event_key) WHERE event_key IS NOT NULL AND event_key <> '';
+    CREATE TABLE IF NOT EXISTS task_run_observations (
+      task_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      observed_at INTEGER NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY(task_id, run_id)
+    );
+    CREATE TABLE IF NOT EXISTS assistant_turn_completions (
+      attempt_id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      message_seq INTEGER NOT NULL UNIQUE,
+      completed_at INTEGER NOT NULL,
+      route_fingerprint TEXT NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE TABLE IF NOT EXISTS device_push_tokens (
+      device_id TEXT PRIMARY KEY REFERENCES paired_devices(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      token_hash TEXT NOT NULL UNIQUE,
+      token_generation INTEGER NOT NULL DEFAULT 1,
+      package_name TEXT NOT NULL,
+      firebase_app_id TEXT NOT NULL,
+      app_version TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_success_at INTEGER,
+      last_error_code TEXT,
+      last_error_at INTEGER,
+      quarantined_at INTEGER,
+      quarantine_code TEXT
+    );
+    CREATE TABLE IF NOT EXISTS push_deliveries (
+      notification_id INTEGER NOT NULL REFERENCES notification_events(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL REFERENCES paired_devices(id) ON DELETE CASCADE,
+      state TEXT NOT NULL CHECK (state IN ('pending','sending','retry','sent','expired','cancelled','dead')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at INTEGER NOT NULL,
+      lease_token TEXT,
+      lease_until INTEGER,
+      expires_at INTEGER NOT NULL,
+      last_error_code TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      sent_at INTEGER,
+      PRIMARY KEY(notification_id, device_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_deliveries_due ON push_deliveries(state, next_attempt_at);
     CREATE TABLE IF NOT EXISTS paired_devices (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -196,6 +245,14 @@ function schema(db) {
   `);
 }
 
+function sanitizeState(value) {
+  const state = value && typeof value === 'object' ? clone(value) : {};
+  // Durable notifications have their own tables. Never reintroduce the old
+  // destructive state.notifications mirror through a snapshot write.
+  delete state.notifications;
+  return state;
+}
+
 function stableLegacyId(prefix, bucket, position, item) {
   if (item?.id) return String(item.id);
   const digest = crypto.createHash('sha256').update(json(item)).digest('hex').slice(0, 14);
@@ -204,7 +261,8 @@ function stableLegacyId(prefix, bucket, position, item) {
 
 function insertSnapshot(db, snapshot) {
   const replaceMessages = Object.prototype.hasOwnProperty.call(snapshot, 'messages');
-  const state = snapshot.state || {};
+  const legacyNotifications = snapshot.state?.notifications?.items || [];
+  const state = sanitizeState(snapshot.state || {});
   const chats = Array.isArray(snapshot.chats) ? snapshot.chats : [];
   const messages = replaceMessages && Array.isArray(snapshot.messages) ? snapshot.messages : [];
   const notes = snapshot.notes || { gu: [], her: [] };
@@ -223,7 +281,7 @@ function insertSnapshot(db, snapshot) {
     'app_state', 'chats', 'message_feedback', 'notes', 'todos',
     'calendar_events', 'calendar_days', 'diary_entries', 'whisper_entries',
     'wall_entries', 'nook_books', 'nook_progress', 'nook_annotations',
-    'subscriptions', 'api_auth', 'gong_messages', 'notification_events',
+    'subscriptions', 'api_auth', 'gong_messages',
   ];
   if (replaceMessages) clearTables.push('messages');
   for (const table of clearTables) db.prepare(`DELETE FROM ${table}`).run();
@@ -303,10 +361,17 @@ function insertSnapshot(db, snapshot) {
   db.prepare('INSERT INTO api_auth(id, payload) VALUES(1, ?)').run(json(apiAuth));
   insertOrdered('gong_messages', 'gong', gong);
 
-  const insertNotification = db.prepare('INSERT INTO notification_events(id, kind, event_key, at, route, payload) VALUES(?, ?, ?, ?, ?, ?)');
-  for (const item of state.notifications?.items || []) insertNotification.run(
-    Number(item.id), String(item.kind || ''), item.key || null, Number(item.at) || 0, String(item.route || ''), json(item),
-  );
+  if (legacyNotifications.length && !db.prepare('SELECT 1 FROM notification_events LIMIT 1').get()) {
+    const insertNotification = db.prepare('INSERT OR IGNORE INTO notification_events(id, kind, event_key, at, route, payload) VALUES(?, ?, ?, ?, ?, ?)');
+    for (const item of legacyNotifications) {
+      const notificationId = Number(item.id);
+      if (!Number.isSafeInteger(notificationId) || notificationId <= 0) continue;
+      insertNotification.run(
+        notificationId, String(item.kind || ''), item.key || null, Number(item.at) || 0,
+        String(item.route || ''), json({ ...item, id: notificationId, notification_id: notificationId }),
+      );
+    }
+  }
 }
 
 function rowsAsObjects(db, table, order = 'position ASC') {
@@ -316,7 +381,7 @@ function rowsAsObjects(db, table, order = 'position ASC') {
 function loadSnapshot(db, defaults = {}) {
   const stateRow = db.prepare('SELECT payload FROM app_state WHERE id = 1').get();
   const authRow = db.prepare('SELECT payload FROM api_auth WHERE id = 1').get();
-  const state = parse(stateRow?.payload, defaults.state || {});
+  const state = sanitizeState(parse(stateRow?.payload, defaults.state || {}));
   const chats = rowsAsObjects(db, 'chats', 'last DESC, id ASC');
   const messages = rowsAsObjects(db, 'messages', 'seq ASC');
   const bucketed = table => {
@@ -375,6 +440,25 @@ function sameCounts(a, b) {
   return Object.keys(a).every(key => Number(a[key]) === Number(b[key]));
 }
 
+function notificationObject(row) {
+  const value = parse(row.payload, {});
+  const notificationId = Number(row.id);
+  return {
+    ...value,
+    id: notificationId,
+    notification_id: notificationId,
+    kind: String(row.kind || value.kind || ''),
+    key: row.event_key || value.key || null,
+    at: Number(row.at) || Number(value.at) || 0,
+    route: String(row.route || value.route || ''),
+  };
+}
+
+function notificationRow(db, id) {
+  const row = db.prepare('SELECT id, kind, event_key, at, route, payload FROM notification_events WHERE id = ?').get(id);
+  return row ? notificationObject(row) : null;
+}
+
 async function legacySnapshot(dataDir, defaults) {
   return {
     state: { ...(defaults.state || {}), ...(await readJson(path.join(dataDir, 'state.json'), {})) },
@@ -407,6 +491,111 @@ async function backupLegacy(dataDir) {
   return { backupDir, copied };
 }
 
+async function syncFile(file) {
+  const handle = await fsp.open(file, 'r+');
+  try { await handle.sync(); } finally { await handle.close(); }
+}
+
+async function syncDirectory(dir) {
+  const handle = await fsp.open(dir, 'r');
+  try { await handle.sync(); } finally { await handle.close(); }
+}
+
+async function consistentBackup(db, dbPath, backupDir) {
+  const checkpoint = db.pragma('wal_checkpoint(TRUNCATE)')?.[0] || {};
+  if (Number(checkpoint.busy || 0) !== 0 || Number(checkpoint.log || 0) !== 0) {
+    throw new Error(`database checkpoint busy: ${json(checkpoint)}`);
+  }
+  const readonly = new Database(dbPath, { readonly: true });
+  try {
+    const result = readonly.pragma('integrity_check', { simple: true });
+    if (String(result).trim() !== 'ok') throw new Error(`database integrity check failed: ${String(result).slice(0, 200)}`);
+  } finally { readonly.close(); }
+  const backupPath = path.join(backupDir, 'dwell.sqlite');
+  await db.backup(backupPath);
+  await fsp.chmod(backupPath, 0o600);
+  await syncFile(backupPath);
+  await syncDirectory(backupDir);
+  return backupPath;
+}
+
+function migrateLegacyNotificationState(db, legacyState) {
+  const notificationState = legacyState?.notifications && typeof legacyState.notifications === 'object'
+    ? legacyState.notifications : {};
+  const observations = db.prepare(`
+    INSERT OR IGNORE INTO task_run_observations(task_id, run_id, observed_at, payload)
+    VALUES(?, ?, ?, ?)
+  `);
+  for (const [key, value] of Object.entries(notificationState.taskSeen || {})) {
+    const separator = key.lastIndexOf(':');
+    if (separator <= 0 || separator === key.length - 1) continue;
+    const taskId = key.slice(0, separator);
+    const runId = key.slice(separator + 1);
+    const observedAt = Number(value) || Math.floor(Date.parse(String(value || '')) / 1000) || 0;
+    observations.run(taskId, runId, observedAt, json({ migrated: true, completed_at: value }));
+  }
+  const row = db.prepare('SELECT payload FROM app_state WHERE id = 1').get();
+  const state = parse(row?.payload, {});
+  delete state.notifications;
+  db.prepare('INSERT OR REPLACE INTO app_state(id, payload) VALUES(1, ?)').run(json(state));
+  return { taskObservations: Object.keys(notificationState.taskSeen || {}).length };
+}
+
+async function migrateExistingDatabase(dataDir, dbPath, db, defaults) {
+  const backupDir = path.join(dataDir, 'backups', `pre-v061-${timestampSlug()}`);
+  await fsp.mkdir(backupDir, { recursive: true, mode: 0o700 });
+  let backupPath;
+  try {
+    backupPath = await consistentBackup(db, dbPath, backupDir);
+    const legacyState = parse(db.prepare('SELECT payload FROM app_state WHERE id = 1').get()?.payload, defaults.state || {});
+    const legacyEvents = db.prepare('SELECT id, kind, event_key, at, route, payload FROM notification_events ORDER BY id ASC').all();
+    const migrateTransaction = db.transaction(() => {
+      db.exec('DROP INDEX IF EXISTS idx_notification_events_event_key');
+      db.exec('DROP INDEX IF EXISTS idx_notification_events_at');
+      db.exec('ALTER TABLE notification_events RENAME TO notification_events_v1');
+      db.exec(`CREATE TABLE notification_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL DEFAULT '',
+        event_key TEXT,
+        at INTEGER NOT NULL DEFAULT 0,
+        route TEXT NOT NULL DEFAULT '',
+        payload TEXT NOT NULL
+      )`);
+      db.exec('CREATE INDEX idx_notification_events_at ON notification_events(at DESC)');
+      db.exec('CREATE UNIQUE INDEX idx_notification_events_event_key ON notification_events(event_key) WHERE event_key IS NOT NULL AND event_key <> \'\'');
+      const insert = db.prepare('INSERT OR IGNORE INTO notification_events(id, kind, event_key, at, route, payload) VALUES(?, ?, ?, ?, ?, ?)');
+      const keys = new Set();
+      for (const row of legacyEvents) {
+        const key = row.event_key ? String(row.event_key) : '';
+        if (key && keys.has(key)) continue;
+        if (key) keys.add(key);
+        insert.run(Number(row.id), String(row.kind || ''), key || null, Number(row.at) || 0, String(row.route || ''), row.payload || '{}');
+      }
+      const stateNotifications = legacyState.notifications?.items || [];
+      for (const item of stateNotifications) {
+        const notificationId = Number(item.id);
+        if (!Number.isSafeInteger(notificationId) || notificationId <= 0) continue;
+        const key = item.key ? String(item.key) : null;
+        if (key && db.prepare('SELECT 1 FROM notification_events WHERE event_key = ?').get(key)) continue;
+        insert.run(notificationId, String(item.kind || ''), key, Number(item.at) || 0, String(item.route || ''), json({ ...item, id: notificationId, notification_id: notificationId }));
+      }
+      db.exec('DROP TABLE notification_events_v1');
+      schema(db);
+      migrateLegacyNotificationState(db, legacyState);
+      db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('notification_epoch', crypto.randomUUID());
+      db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('schema_version', String(SCHEMA_VERSION));
+      db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('migrated_from', '1');
+      db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('migrated_at', new Date().toISOString());
+    });
+    migrateTransaction.immediate();
+    return { ok: true, schemaVersion: SCHEMA_VERSION, backup: backupDir, backupPath };
+  } catch (error) {
+    const report = { ok: false, schemaVersion: SCHEMA_VERSION, database: dbPath, backup: backupDir, backupPath: backupPath || '', error: error.message };
+    await fsp.writeFile(path.join(backupDir, 'migration-report.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+    throw error;
+  }
+}
+
 async function migrate(dataDir, dbPath, defaults) {
   const source = await legacySnapshot(dataDir, defaults);
   const expected = snapshotCounts(source);
@@ -416,11 +605,14 @@ async function migrate(dataDir, dbPath, defaults) {
   try {
     db = new Database(tempPath);
     schema(db);
-    db.transaction(() => {
+    const freshTransaction = db.transaction(() => {
       insertSnapshot(db, source);
+      migrateLegacyNotificationState(db, source.state);
+      db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('notification_epoch', crypto.randomUUID());
       db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('schema_version', String(SCHEMA_VERSION));
       db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('legacy_migrated_at', new Date().toISOString());
-    })();
+    });
+    freshTransaction.immediate();
     const actual = snapshotCounts(loadSnapshot(db, defaults));
     if (!sameCounts(expected, actual)) throw new Error(`migration count mismatch: expected=${json(expected)} actual=${json(actual)}`);
     db.pragma('wal_checkpoint(TRUNCATE)');
@@ -448,11 +640,28 @@ export async function openDwellDatabase({ dataDir, defaults = {} }) {
   let migration = null;
   if (!(await exists(dbPath))) migration = await migrate(dataDir, dbPath, defaults);
   const db = new Database(dbPath);
-  schema(db);
-  const version = Number(db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')?.value || 0);
+  let version = Number(db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')?.value || 0);
+  if (version > SCHEMA_VERSION) {
+    db.close();
+    throw new Error(`unsupported dwell database schema ${version}; expected at most ${SCHEMA_VERSION}`);
+  }
+  if (version === 1) {
+    try {
+      migration = await migrateExistingDatabase(dataDir, dbPath, db, defaults);
+      version = SCHEMA_VERSION;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
+  } else {
+    schema(db);
+  }
   if (version !== SCHEMA_VERSION) {
     db.close();
     throw new Error(`unsupported dwell database schema ${version}; expected ${SCHEMA_VERSION}`);
+  }
+  if (!db.prepare('SELECT value FROM meta WHERE key = ?').get('notification_epoch')?.value) {
+    db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('notification_epoch', crypto.randomUUID());
   }
 
   const saveTransaction = db.transaction(snapshot => insertSnapshot(db, snapshot));
@@ -469,13 +678,279 @@ export async function openDwellDatabase({ dataDir, defaults = {} }) {
     for (const row of oldFeedback) if (valid.has(Number(row.message_seq))) restore.run(Number(row.message_seq), row.value);
   });
 
+  const createNotificationInTransaction = (event, senderEnabled, ttlSeconds = 3600, senderBinding = {}) => {
+    const senderPackageName = String(senderBinding.packageName || '');
+    const senderFirebaseAppId = String(senderBinding.firebaseAppId || '');
+    const eventKey = event.eventKey == null ? null : String(event.eventKey);
+    if (eventKey) {
+      const existing = db.prepare('SELECT id, kind, event_key, at, route, payload FROM notification_events WHERE event_key = ?').get(eventKey);
+      if (existing) return { created: false, notification: notificationObject(existing), deliveries: [] };
+    }
+    const at = Number(event.at) || Math.floor(Date.now() / 1000);
+    const createdAt = Number(senderBinding.createdAt) || Math.floor(Date.now() / 1000);
+    const payload = {
+      kind: String(event.kind || ''), key: eventKey, title: String(event.title || 'Claude Cli'),
+      body: String(event.body || ''), route: String(event.route || ''), at,
+    };
+    const result = db.prepare(`INSERT INTO notification_events(kind, event_key, at, route, payload) VALUES(?, ?, ?, ?, ?)`)
+      .run(payload.kind, eventKey, at, payload.route, json(payload));
+    const notificationId = Number(result.lastInsertRowid);
+    payload.id = notificationId;
+    payload.notification_id = notificationId;
+    db.prepare('UPDATE notification_events SET payload = ? WHERE id = ?').run(json(payload), notificationId);
+    const deliveries = [];
+    if (senderEnabled && senderPackageName && senderFirebaseAppId) {
+      const expiry = createdAt + Math.max(1, Number(ttlSeconds) || 3600);
+      const tokens = db.prepare(`SELECT device_id, token_generation, token_hash
+        FROM device_push_tokens
+        WHERE quarantined_at IS NULL
+          AND package_name = ?
+          AND firebase_app_id = ?
+          AND device_id IN (SELECT id FROM paired_devices WHERE revoked_at IS NULL)`).all(
+        senderPackageName, senderFirebaseAppId,
+      );
+      const insert = db.prepare(`INSERT OR IGNORE INTO push_deliveries(
+        notification_id, device_id, state, attempts, next_attempt_at, lease_token, lease_until,
+        expires_at, last_error_code, created_at, updated_at, sent_at
+      ) VALUES(?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL, ?, ?, NULL)`);
+      for (const token of tokens) {
+        insert.run(notificationId, token.device_id, createdAt, expiry, createdAt, createdAt);
+        deliveries.push({ deviceId: token.device_id, tokenGeneration: token.token_generation, tokenHash: token.token_hash });
+      }
+    }
+    return { created: true, notification: notificationObject(db.prepare('SELECT id, kind, event_key, at, route, payload FROM notification_events WHERE id = ?').get(notificationId)), deliveries };
+  };
+  const createNotificationTransaction = db.transaction(createNotificationInTransaction);
+
+  const registerPushTokenTransaction = db.transaction(input => {
+    const at = Number(input.at) || Math.floor(Date.now() / 1000);
+    const device = db.prepare('SELECT revoked_at FROM paired_devices WHERE id = ?').get(input.deviceId);
+    if (!device || device.revoked_at != null) return { ok: false, error: 'device_not_active' };
+    const existingToken = db.prepare('SELECT device_id FROM device_push_tokens WHERE token_hash = ?').get(input.tokenHash);
+    if (existingToken && existingToken.device_id !== input.deviceId) {
+      const owner = db.prepare('SELECT revoked_at FROM paired_devices WHERE id = ?').get(existingToken.device_id);
+      if (!owner || owner.revoked_at == null) return { ok: false, error: 'push_token_bound_elsewhere' };
+      db.prepare('DELETE FROM device_push_tokens WHERE device_id = ?').run(existingToken.device_id);
+    }
+    const current = db.prepare('SELECT * FROM device_push_tokens WHERE device_id = ?').get(input.deviceId);
+    const newBinding = !current
+      || current.token_hash !== input.tokenHash
+      || current.package_name !== input.packageName
+      || current.firebase_app_id !== input.firebaseAppId;
+    const generation = newBinding ? (Number(current?.token_generation) || 0) + 1 : Number(current.token_generation);
+    if (newBinding && current) db.prepare(`UPDATE push_deliveries SET state = 'cancelled', lease_token = NULL, lease_until = NULL, updated_at = ?
+      WHERE device_id = ? AND state IN ('pending', 'retry', 'sending')`).run(at, input.deviceId);
+    db.prepare(`INSERT INTO device_push_tokens(
+      device_id, token, token_hash, token_generation, package_name, firebase_app_id, app_version,
+      created_at, updated_at, last_success_at, last_error_code, last_error_at, quarantined_at, quarantine_code
+    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)
+    ON CONFLICT(device_id) DO UPDATE SET
+      token = excluded.token, token_hash = excluded.token_hash, token_generation = excluded.token_generation,
+      package_name = excluded.package_name, firebase_app_id = excluded.firebase_app_id, app_version = excluded.app_version,
+      updated_at = excluded.updated_at, quarantined_at = NULL, quarantine_code = NULL`).run(
+      input.deviceId, input.token, input.tokenHash, generation, input.packageName, input.firebaseAppId,
+      input.appVersion, Number(current?.created_at) || at, at,
+    );
+    return { ok: true, newBinding, generation };
+  });
+
+  const commitAssistantTransaction = db.transaction(input => {
+    const existing = db.prepare('SELECT attempt_id, chat_id, message_seq, completed_at, route_fingerprint, payload FROM assistant_turn_completions WHERE attempt_id = ?').get(input.attemptId);
+    if (existing) {
+      const eventRow = db.prepare('SELECT id, kind, event_key, at, route, payload FROM notification_events WHERE event_key = ?').get(`chat:${Number(existing.message_seq)}`);
+      return { created: false, completion: existing, notification: eventRow ? notificationObject(eventRow) : null };
+    }
+    db.prepare(`INSERT INTO assistant_turn_completions(
+      attempt_id, chat_id, message_seq, completed_at, route_fingerprint, payload
+    ) VALUES(?, ?, ?, ?, ?, ?)`).run(
+      input.attemptId, input.chatId, Number(input.messageSeq), Number(input.completedAt) || Math.floor(Date.now() / 1000),
+      input.routeFingerprint || '', json(input.metadata || {}),
+    );
+    const result = createNotificationInTransaction(input.event, input.senderEnabled, input.ttlSeconds, {
+      packageName: input.senderPackageName,
+      firebaseAppId: input.senderFirebaseAppId,
+      createdAt: input.createdAt,
+    });
+    return { created: true, completion: { attemptId: input.attemptId, messageSeq: Number(input.messageSeq) }, ...result };
+  });
+
   return {
     path: dbPath,
     migration,
     loadSnapshot: () => loadSnapshot(db, defaults),
+    notificationEpoch() {
+      return String(db.prepare('SELECT value FROM meta WHERE key = ?').get('notification_epoch')?.value || '');
+    },
+    latestNotificationId() {
+      return Number(db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM notification_events').get()?.id || 0);
+    },
+    notificationBaseline() {
+      return { notificationEpoch: String(db.prepare('SELECT value FROM meta WHERE key = ?').get('notification_epoch')?.value || ''), latest: Number(db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM notification_events').get()?.id || 0) };
+    },
+    listNotificationsAfter({ since = 0, limit = 50, order = 'asc' } = {}) {
+      const safeSince = Number(since) || 0;
+      const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+      const rows = order === 'desc'
+        ? db.prepare(`SELECT id, kind, event_key, at, route, payload FROM notification_events WHERE id > ? ORDER BY id DESC LIMIT ?`).all(safeSince, safeLimit)
+        : db.prepare(`SELECT id, kind, event_key, at, route, payload FROM notification_events WHERE id > ? ORDER BY id ASC LIMIT ?`).all(safeSince, safeLimit + 1);
+      const hasMore = order !== 'desc' && rows.length > safeLimit;
+      const items = rows.slice(0, safeLimit).map(notificationObject);
+      const latest = Number(db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM notification_events').get()?.id || 0);
+      return { items, hasMore, next: items.length ? Number(items.at(-1).notification_id) : safeSince, latest };
+    },
+    createNotification(event, {
+      senderEnabled = false,
+      ttlSeconds = 3600,
+      senderPackageName = '',
+      senderFirebaseAppId = '',
+      createdAt = 0,
+    } = {}) {
+      return createNotificationTransaction.immediate(event, senderEnabled, ttlSeconds, {
+        packageName: senderPackageName,
+        firebaseAppId: senderFirebaseAppId,
+        createdAt,
+      });
+    },
+    commitAssistantCompletion(input) {
+      return commitAssistantTransaction.immediate(input);
+    },
+    observeTaskRunAndCreateNotification(input) {
+      const transaction = db.transaction(value => {
+        const inserted = db.prepare(`INSERT OR IGNORE INTO task_run_observations(task_id, run_id, observed_at, payload)
+          VALUES(?, ?, ?, ?)`).run(value.taskId, value.runId, Number(value.observedAt) || Math.floor(Date.now() / 1000), json(value.observation || {}));
+        if (!inserted.changes) return { created: false, notification: null };
+        return createNotificationInTransaction(value.event, !!value.senderEnabled, Number(value.ttlSeconds) || 86400, {
+          packageName: value.senderPackageName,
+          firebaseAppId: value.senderFirebaseAppId,
+          createdAt: value.createdAt,
+        });
+      });
+      return transaction.immediate(input);
+    },
+    registerPushToken(input) {
+      return registerPushTokenTransaction.immediate(input);
+    },
+    unregisterPushToken(deviceId, at = Math.floor(Date.now() / 1000)) {
+      const transaction = db.transaction(id => {
+        db.prepare('DELETE FROM device_push_tokens WHERE device_id = ?').run(id);
+        return db.prepare(`UPDATE push_deliveries SET state = 'cancelled', lease_token = NULL, lease_until = NULL, updated_at = ?
+          WHERE device_id = ? AND state IN ('pending', 'retry', 'sending')`).run(at, id).changes;
+      });
+      return transaction.immediate(deviceId);
+    },
+    pushStatus(deviceId) {
+      const token = db.prepare(`SELECT updated_at AS updatedAt, last_success_at AS lastSuccessAt, last_error_code AS lastErrorCode,
+        last_error_at AS lastErrorAt, quarantined_at AS quarantinedAt, quarantine_code AS quarantineCode
+        FROM device_push_tokens WHERE device_id = ?`).get(deviceId) || null;
+      const pending = Number(db.prepare(`SELECT COUNT(*) AS count FROM push_deliveries WHERE device_id = ? AND state IN ('pending', 'retry', 'sending')`).get(deviceId)?.count || 0);
+      return { registered: !!token, token: token ? { ...token } : null, pending };
+    },
+    claimPushDeliveries({
+      workerId,
+      limit = 100,
+      at = Math.floor(Date.now() / 1000),
+      leaseSeconds = 120,
+      packageName = '',
+      firebaseAppId = '',
+    } = {}) {
+      const transaction = db.transaction(() => {
+        db.prepare(`UPDATE push_deliveries SET state = CASE WHEN expires_at <= ? THEN 'expired' ELSE 'retry' END,
+          lease_token = NULL, lease_until = NULL, updated_at = ?
+          WHERE state = 'sending' AND lease_until <= ?`).run(at, at, at);
+        db.prepare(`UPDATE push_deliveries SET state = 'expired', updated_at = ?
+          WHERE state IN ('pending', 'retry') AND expires_at <= ?`).run(at, at);
+        const filters = [
+          "d.state IN ('pending', 'retry')",
+          'd.next_attempt_at <= ?',
+          'd.expires_at > ?',
+          't.quarantined_at IS NULL',
+          'p.revoked_at IS NULL',
+        ];
+        const params = [at, at];
+        if (String(packageName || '')) {
+          filters.push('t.package_name = ?');
+          params.push(String(packageName));
+        }
+        if (String(firebaseAppId || '')) {
+          filters.push('t.firebase_app_id = ?');
+          params.push(String(firebaseAppId));
+        }
+        params.push(Math.min(Math.max(Number(limit) || 100, 1), 100));
+        const rows = db.prepare(`SELECT d.notification_id AS notificationId, d.device_id AS deviceId, d.attempts,
+          d.created_at AS createdAt, d.expires_at AS expiresAt, t.token, t.token_hash AS tokenHash, t.token_generation AS tokenGeneration,
+          e.id AS id, e.kind, e.event_key AS eventKey, e.at, e.route, e.payload
+          FROM push_deliveries d JOIN device_push_tokens t ON t.device_id = d.device_id
+          JOIN paired_devices p ON p.id = d.device_id
+          JOIN notification_events e ON e.id = d.notification_id
+          WHERE ${filters.join(' AND ')}
+          ORDER BY d.next_attempt_at ASC, d.notification_id ASC LIMIT ?`).all(...params);
+        const update = db.prepare(`UPDATE push_deliveries SET state = 'sending', attempts = attempts + 1,
+          lease_token = ?, lease_until = ?, updated_at = ?
+          WHERE notification_id = ? AND device_id = ? AND state IN ('pending', 'retry')`);
+        return rows.filter(row => {
+          const leaseToken = crypto.randomUUID();
+          const changed = update.run(leaseToken, at + leaseSeconds, at, row.notificationId, row.deviceId).changes === 1;
+          if (changed) { row.leaseToken = leaseToken; row.leaseUntil = at + leaseSeconds; row.attempts += 1; row.notification = notificationObject(row); }
+          return changed;
+        });
+      });
+      return transaction.immediate();
+    },
+    completePushDelivery({ notificationId, deviceId, leaseToken, at = Math.floor(Date.now() / 1000) }) {
+      return db.prepare(`UPDATE push_deliveries SET state = 'sent', sent_at = ?, updated_at = ?, lease_token = NULL, lease_until = NULL,
+        last_error_code = NULL WHERE notification_id = ? AND device_id = ? AND state = 'sending' AND lease_token = ?`).run(at, at, notificationId, deviceId, leaseToken).changes === 1;
+    },
+    retryPushDelivery({ notificationId, deviceId, leaseToken, errorCode = 'temporary', nextAttemptAt, dead = false, at = Math.floor(Date.now() / 1000) }) {
+      const state = dead ? 'dead' : 'retry';
+      return db.prepare(`UPDATE push_deliveries SET state = ?, next_attempt_at = ?, updated_at = ?, lease_token = NULL, lease_until = NULL,
+        last_error_code = ? WHERE notification_id = ? AND device_id = ? AND state = 'sending' AND lease_token = ?`).run(
+        state, Number(nextAttemptAt) || at, at, String(errorCode).slice(0, 100), notificationId, deviceId, leaseToken,
+      ).changes === 1;
+    },
+    recoverExpiredPushLeases(at = Math.floor(Date.now() / 1000)) {
+      return db.prepare(`UPDATE push_deliveries SET state = CASE WHEN expires_at <= ? THEN 'expired' ELSE 'retry' END,
+        lease_token = NULL, lease_until = NULL, updated_at = ? WHERE state = 'sending' AND lease_until <= ?`).run(at, at, at).changes;
+    },
+    expirePushDelivery({ notificationId, deviceId, leaseToken, at = Math.floor(Date.now() / 1000) }) {
+      return db.prepare(`UPDATE push_deliveries SET state = 'expired', lease_token = NULL, lease_until = NULL, updated_at = ?
+        WHERE notification_id = ? AND device_id = ? AND state = 'sending' AND lease_token = ?`).run(
+        at, notificationId, deviceId, leaseToken,
+      ).changes === 1;
+    },
+    cancelPushDeliveries(at = Math.floor(Date.now() / 1000)) {
+      return db.prepare(`UPDATE push_deliveries SET state = 'cancelled', lease_token = NULL, lease_until = NULL, updated_at = ?
+        WHERE state IN ('pending', 'retry', 'sending')`).run(at).changes;
+    },
+    markPushTokenSuccess({ deviceId, tokenGeneration, tokenHash, at = Math.floor(Date.now() / 1000) }) {
+      return db.prepare(`UPDATE device_push_tokens SET last_success_at = ?, last_error_code = NULL, last_error_at = NULL, updated_at = ?
+        WHERE device_id = ? AND token_generation = ? AND token_hash = ?`).run(
+        at, at, deviceId, tokenGeneration, tokenHash,
+      ).changes === 1;
+    },
+    recordPushTokenError({ deviceId, tokenGeneration, tokenHash, errorCode = 'send_failed', at = Math.floor(Date.now() / 1000) }) {
+      const code = String(errorCode).slice(0, 100);
+      return db.prepare(`UPDATE device_push_tokens SET last_error_code = ?, last_error_at = ?, updated_at = ?
+        WHERE device_id = ? AND token_generation = ? AND token_hash = ?`).run(
+        code, at, at, deviceId, tokenGeneration, tokenHash,
+      ).changes === 1;
+    },
+    removeInvalidPushToken({ deviceId, tokenGeneration, tokenHash, at = Math.floor(Date.now() / 1000) }) {
+      const transaction = db.transaction(() => {
+        const result = db.prepare('DELETE FROM device_push_tokens WHERE device_id = ? AND token_generation = ? AND token_hash = ?')
+          .run(deviceId, tokenGeneration, tokenHash);
+        if (result.changes) db.prepare(`UPDATE push_deliveries SET state = 'cancelled', lease_token = NULL, lease_until = NULL, updated_at = ?
+          WHERE device_id = ? AND state IN ('pending', 'retry', 'sending')`).run(at, deviceId);
+        return result.changes;
+      });
+      return transaction.immediate();
+    },
+    quarantinePushToken({ deviceId, tokenGeneration, tokenHash, code = 'credential_mismatch', at = Math.floor(Date.now() / 1000) }) {
+      return db.prepare(`UPDATE device_push_tokens SET quarantined_at = ?, quarantine_code = ?, last_error_code = ?, last_error_at = ?, updated_at = ?
+        WHERE device_id = ? AND token_generation = ? AND token_hash = ?`).run(at, String(code).slice(0, 100), String(code).slice(0, 100), at, at, deviceId, tokenGeneration, tokenHash).changes === 1;
+    },
+    saveState(state) { db.prepare('INSERT OR REPLACE INTO app_state(id, payload) VALUES(1, ?)').run(json(sanitizeState(state))); },
     counts: () => snapshotCounts(loadSnapshot(db, defaults)),
     saveSnapshot(snapshot) { saveTransaction.immediate(snapshot); },
-    saveState(state) { db.prepare('INSERT OR REPLACE INTO app_state(id, payload) VALUES(1, ?)').run(json(state)); },
     appendMessage(message) {
       db.prepare(`
         INSERT INTO messages(seq, chat_id, at, kind, text, extra, source_uuid, payload)
@@ -500,7 +975,17 @@ export async function openDwellDatabase({ dataDir, defaults = {} }) {
     },
     touchDevice(id, at) { db.prepare('UPDATE paired_devices SET last_seen_at = ? WHERE id = ?').run(at, id); },
     listDevices() { return db.prepare('SELECT id, name, public_key AS publicKey, created_at AS createdAt, last_seen_at AS lastSeenAt, revoked_at AS revokedAt FROM paired_devices ORDER BY created_at DESC').all(); },
-    revokeDevice(id, at) { return db.prepare('UPDATE paired_devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(at, id).changes === 1; },
+    revokeDevice(id, at) {
+      const transaction = db.transaction(deviceId => {
+        const result = db.prepare('UPDATE paired_devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(at, deviceId);
+        if (!result.changes) return false;
+        db.prepare('DELETE FROM device_push_tokens WHERE device_id = ?').run(deviceId);
+        db.prepare(`UPDATE push_deliveries SET state = 'cancelled', lease_token = NULL, lease_until = NULL, updated_at = ?
+          WHERE device_id = ? AND state IN ('pending', 'retry', 'sending')`).run(at, deviceId);
+        return true;
+      });
+      return transaction.immediate(id);
+    },
     mutationReceipt(mutationId, deviceId) {
       const row = db.prepare('SELECT result FROM mutation_receipts WHERE mutation_id = ? AND device_id = ?').get(mutationId, deviceId);
       return row ? parse(row.result, null) : null;

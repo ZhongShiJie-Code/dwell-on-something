@@ -5,6 +5,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { listTaskRuns, taskRunDetail } from './desktop-task-history.mjs';
+import { sanitizedChildEnv } from './child-env.mjs';
 
 const execFileAsync = promisify(execFile);
 const profileRoot = path.resolve(process.env.DWELL_CLAUDE_PROFILE || path.join(os.homedir(), 'Library/Application Support/Claude-3p'));
@@ -115,6 +116,7 @@ export async function controlDesktopTask(action, taskId) {
       ? [controlBridge, JSON.stringify({ action, task_id: task.id })]
       : [JSON.stringify({ action, task_id: task.id })];
     const { stdout } = await execFileAsync(command, args, {
+      env: sanitizedChildEnv({ executionPath: command }),
       timeout: 45_000,
       maxBuffer: 2 * 1024 * 1024,
     });

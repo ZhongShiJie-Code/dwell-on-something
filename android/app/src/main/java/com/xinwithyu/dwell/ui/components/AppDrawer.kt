@@ -36,6 +36,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.xinwithyu.dwell.ui.theme.DwellSerif
 import kotlinx.coroutines.launch
@@ -56,7 +59,7 @@ val drawerDestinations = listOf(
 
 @Composable
 fun DwellNavigationDrawer(
-    selected: String,
+    selectedDestination: String,
     onDestination: (String) -> Unit,
     onSettings: () -> Unit,
     drawerRequest: Int,
@@ -77,14 +80,15 @@ fun DwellNavigationDrawer(
             ) {
                 Column(Modifier.fillMaxHeight().padding(horizontal = 18.dp)) {
                     Spacer(Modifier.height(56.dp))
-                    Text("Claude", fontFamily = DwellSerif, style = MaterialTheme.typography.displayLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp))
+                    Text("Claude Cli", fontFamily = DwellSerif, style = MaterialTheme.typography.displayLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp))
                     Spacer(Modifier.height(10.dp))
                     drawerDestinations.forEach { item ->
-                        val active = item.id == selected
+                        val active = item.id == selectedDestination
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (active) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(18.dp))
-                                .clickable {
+                                .semantics { selected = active }
+                                .clickable(role = Role.Button) {
                                     scope.launch { state.close() }
                                     onDestination(item.id)
                                 }
@@ -99,7 +103,7 @@ fun DwellNavigationDrawer(
                     Spacer(Modifier.weight(1f))
                     Row(
                         Modifier.padding(start = 14.dp, bottom = 28.dp).size(60.dp).background(MaterialTheme.colorScheme.surface, CircleShape)
-                            .clickable { scope.launch { state.close() }; onSettings() },
+                            .clickable(role = Role.Button) { scope.launch { state.close() }; onSettings() },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                     ) { Text("Me", style = MaterialTheme.typography.titleLarge) }

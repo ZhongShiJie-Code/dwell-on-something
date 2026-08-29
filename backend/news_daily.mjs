@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { sanitizedChildEnv } from './child-env.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(process.env.DWELL_DATA_DIR || path.join(HERE, 'data'));
@@ -40,7 +41,10 @@ async function rss(url) {
 
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const child = spawn(CLAUDE_BIN, ['-p', prompt, '--model', 'haiku', '--output-format', 'text', '--no-session-persistence'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(CLAUDE_BIN, ['-p', prompt, '--model', 'haiku', '--output-format', 'text', '--no-session-persistence'], {
+      env: sanitizedChildEnv({ executionPath: CLAUDE_BIN }),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let out = '', err = '';
     child.stdout.on('data', x => { out += x; });
     child.stderr.on('data', x => { err += x; });

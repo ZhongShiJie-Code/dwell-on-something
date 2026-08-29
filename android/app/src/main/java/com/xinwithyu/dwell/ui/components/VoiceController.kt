@@ -66,7 +66,7 @@ class NativeVoiceController(
         onError(
             when (error) {
                 SpeechRecognizer.ERROR_AUDIO -> "麦克风音频读取失败"
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "请允许 Dwell 使用麦克风"
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "请允许 Claude Cli 使用麦克风"
                 SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
                 SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正在忙，请稍后再试"
                 SpeechRecognizer.ERROR_NO_MATCH -> "没有听清，请再说一次"

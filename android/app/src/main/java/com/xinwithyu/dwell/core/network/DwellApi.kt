@@ -5,8 +5,11 @@ import com.xinwithyu.dwell.core.model.BootstrapResponse
 import com.xinwithyu.dwell.core.model.ChatsResponse
 import com.xinwithyu.dwell.core.model.MessagePage
 import com.xinwithyu.dwell.core.model.ModelView
+import com.xinwithyu.dwell.core.model.NotificationBaselineResponse
 import com.xinwithyu.dwell.core.model.NotificationResponse
 import com.xinwithyu.dwell.core.model.PairResponse
+import com.xinwithyu.dwell.core.model.PushStatusResponse
+import com.xinwithyu.dwell.core.model.PushTokenResponse
 import com.xinwithyu.dwell.core.model.SseEnvelope
 import com.xinwithyu.dwell.core.model.TaskDetailResponse
 import com.xinwithyu.dwell.core.model.TaskListResponse
@@ -147,8 +150,43 @@ class DwellApi {
         baseUrl, token, "/api/v2/tasks/${encode(taskId)}/actions/${encode(action)}", JsonObject(emptyMap()), JsonObject.serializer(),
     )
 
-    suspend fun notifications(baseUrl: String, token: String, since: Long): NotificationResponse = get(
-        baseUrl, token, "/api/v2/notifications?since=$since", NotificationResponse.serializer(),
+    suspend fun notifications(baseUrl: String, token: String, since: Long, limit: Int = 100): NotificationResponse = get(
+        baseUrl,
+        token,
+        "/api/v2/notifications?since=${since.coerceAtLeast(0)}&limit=${limit.coerceIn(1, 100)}&order=asc",
+        NotificationResponse.serializer(),
+    )
+
+    suspend fun notificationBaseline(baseUrl: String, token: String): NotificationBaselineResponse = get(
+        baseUrl, token, "/api/v2/notifications/baseline", NotificationBaselineResponse.serializer(),
+    )
+
+    suspend fun registerPushToken(
+        baseUrl: String,
+        token: String,
+        fcmToken: String,
+        appVersion: String,
+        firebaseAppId: String,
+    ): PushTokenResponse = put(
+        baseUrl,
+        token,
+        "/api/v2/devices/me/push-token",
+        buildJsonObject {
+            put("provider", "fcm")
+            put("token", fcmToken)
+            put("package_name", "com.xinwithyu.dwell")
+            put("app_version", appVersion)
+            put("firebase_app_id", firebaseAppId)
+        },
+        PushTokenResponse.serializer(),
+    )
+
+    suspend fun unregisterPushToken(baseUrl: String, token: String): PushTokenResponse = delete(
+        baseUrl, token, "/api/v2/devices/me/push-token", PushTokenResponse.serializer(),
+    )
+
+    suspend fun pushStatus(baseUrl: String, token: String): PushStatusResponse = get(
+        baseUrl, token, "/api/v2/devices/me/push-status", PushStatusResponse.serializer(),
     )
 
     fun events(baseUrl: String, token: String, since: Long): Flow<SseEnvelope> = callbackFlow {
@@ -201,6 +239,30 @@ class DwellApi {
         val request = requestBuilder(baseUrl, token, path)
             .post(raw.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
+        return execute(request, serializer)
+    }
+
+    private suspend fun <T> put(
+        baseUrl: String,
+        token: String,
+        path: String,
+        body: JsonObject,
+        serializer: KSerializer<T>,
+    ): T {
+        val raw = json.encodeToString(JsonObject.serializer(), body)
+        val request = requestBuilder(baseUrl, token, path)
+            .put(raw.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        return execute(request, serializer)
+    }
+
+    private suspend fun <T> delete(
+        baseUrl: String,
+        token: String,
+        path: String,
+        serializer: KSerializer<T>,
+    ): T {
+        val request = requestBuilder(baseUrl, token, path).delete().build()
         return execute(request, serializer)
     }
 

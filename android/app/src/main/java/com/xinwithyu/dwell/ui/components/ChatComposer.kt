@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -29,6 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,8 +65,10 @@ fun ChatComposer(
                 attachmentNames.take(3).forEachIndexed { index, name ->
                     Text(
                         name,
-                        modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-                            .clickable { onRemoveAttachment(index) }.padding(horizontal = 9.dp, vertical = 6.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                            .clickable(role = Role.Button) { onRemoveAttachment(index) }
+                            .padding(horizontal = 9.dp, vertical = 6.dp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelMedium,
@@ -83,7 +89,9 @@ fun ChatComposer(
                 enabled = !busy,
                 textStyle = MaterialTheme.typography.bodyLarge.merge(TextStyle(color = MaterialTheme.colorScheme.onSurface)),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().semantics {
+                    contentDescription = "消息输入框"
+                },
             )
         }
         Spacer(Modifier.size(6.dp))
@@ -91,8 +99,9 @@ fun ChatComposer(
             RoundAction(onAdd) { Icon(Icons.Outlined.Add, "添加", Modifier.size(23.dp)) }
             Spacer(Modifier.width(8.dp))
             Row(
-                Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
-                    .clickable(onClick = onModel).padding(horizontal = 14.dp, vertical = 10.dp),
+                Modifier.defaultMinSize(minHeight = 48.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
+                    .clickable(role = Role.Button, onClick = onModel).padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(modelName, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -110,9 +119,9 @@ fun ChatComposer(
             }
             val canSend = text.isNotBlank() || attachmentNames.isNotEmpty()
             Box(
-                Modifier.size(46.dp)
+                Modifier.size(48.dp)
                     .background(if (busy || canSend) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                    .clickable(enabled = busy || canSend, onClick = if (busy) onStop else onSend),
+                    .clickable(role = Role.Button, enabled = busy || canSend, onClick = if (busy) onStop else onSend),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -128,5 +137,5 @@ fun ChatComposer(
 
 @Composable
 private fun RoundAction(onClick: () -> Unit, color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceVariant, content: @Composable () -> Unit) {
-    Box(Modifier.size(46.dp).background(color, CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) { content() }
+    Box(Modifier.size(48.dp).background(color, CircleShape).clickable(role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) { content() }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,7 +25,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.xinwithyu.dwell.core.model.ChatDto
 import com.xinwithyu.dwell.ui.components.DwellIconButton
@@ -75,11 +79,11 @@ fun ChatsScreen(
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 72.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 DwellIconButton(Icons.Outlined.Menu, "菜单", onMenu)
                 Spacer(Modifier.weight(1f))
                 DwellIconButton(Icons.Outlined.FilterList, "筛选", { filterVisible = true }, tint = if (filter == "all") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.primary)
-                DwellIconButton(Icons.Outlined.Sort, if (newestFirst) "改为最早优先" else "改为最新优先", { newestFirst = !newestFirst })
+                DwellIconButton(Icons.AutoMirrored.Outlined.Sort, if (newestFirst) "改为最早优先" else "改为最新优先", { newestFirst = !newestFirst })
             }
             Text("Chats", fontFamily = DwellSerif, style = MaterialTheme.typography.displayLarge, modifier = Modifier.padding(horizontal = 24.dp))
             OutlinedTextField(
@@ -102,7 +106,7 @@ fun ChatsScreen(
                 items(visible, key = { it.id }) { chat ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(
-                            Modifier.weight(1f).clickable { onOpen(chat.id) }.padding(horizontal = 12.dp, vertical = 13.dp),
+                            Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).clickable(role = Role.Button) { onOpen(chat.id) }.padding(horizontal = 12.dp, vertical = 13.dp),
                         ) {
                             Text(chat.name.ifBlank { "新会话" }, style = MaterialTheme.typography.bodyLarge)
                             Text(
@@ -123,7 +127,9 @@ fun ChatsScreen(
         }
         Row(
             Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 28.dp)
-                .background(MaterialTheme.colorScheme.onBackground, RoundedCornerShape(999.dp)).clickable(onClick = onNew)
+                .defaultMinSize(minHeight = 48.dp)
+                .background(MaterialTheme.colorScheme.onBackground, RoundedCornerShape(999.dp))
+                .clickable(role = Role.Button, onClick = onNew)
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -135,9 +141,13 @@ fun ChatsScreen(
     DwellSheet(filterVisible, { filterVisible = false }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
             Text("筛选会话", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp))
-            listOf("all" to "全部会话", "dwell" to "Dwell 会话", "mac" to "Mac Claude Code", "archived" to "已归档").forEach { (id, label) ->
+            listOf("all" to "全部会话", "dwell" to "Claude Cli 会话", "mac" to "Mac Claude Code", "archived" to "已归档").forEach { (id, label) ->
                 Row(
-                    Modifier.fillMaxWidth().clickable { filter = id; filterVisible = false }.padding(horizontal = 10.dp, vertical = 15.dp),
+                    Modifier.fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .semantics { selected = filter == id }
+                        .clickable(role = Role.RadioButton) { filter = id; filterVisible = false }
+                        .padding(horizontal = 10.dp, vertical = 15.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
@@ -149,7 +159,7 @@ fun ChatsScreen(
 }
 
 private fun filterLabel(value: String): String = when (value) {
-    "dwell" -> "Dwell 会话"
+    "dwell" -> "Claude Cli 会话"
     "mac" -> "Mac Claude Code"
     "archived" -> "已归档"
     else -> "全部会话"

@@ -2,8 +2,12 @@
 android/.gradle/
 android/local.properties
 android/app/build/
+android/app/google-services.json
+android/app/src/*/google-services.json
 *.jks
 *.keystore
+backend/*firebase*.json
+backend/*service-account*.json
 
 # IDE metadata
 .idea/

@@ -61,6 +61,11 @@ data class ModelView(
     val supportsEffort: Boolean = true,
     val items: List<ModelOption> = emptyList(),
     val resolved: String = "",
+    @SerialName("requested_model") val requestedModel: String = "",
+    @SerialName("pre_verification_model") val preVerificationModel: String = "",
+    @SerialName("observed_runtime_model") val observedRuntimeModel: String = "",
+    @SerialName("route_status") val routeStatus: String = "",
+    @SerialName("verification_status") val verificationStatus: String = "",
 )
 
 @Serializable
@@ -79,6 +84,7 @@ data class Capabilities(
     val tasks: Boolean = true,
     val voice: String = "android-native",
     val notifications: String = "workmanager",
+    val fcm: Boolean = false,
 )
 
 @Serializable
@@ -86,6 +92,8 @@ data class BootstrapResponse(
     val ok: Boolean,
     val version: String = "",
     @SerialName("server_time") val serverTime: Long = 0,
+    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("notification_epoch") val notificationEpoch: String = "",
     val status: BackendStatus = BackendStatus(),
     val model: ModelView = ModelView(),
     val chats: List<ChatDto> = emptyList(),
@@ -192,19 +200,72 @@ data class TaskRunResponse(
 
 @Serializable
 data class NotificationDto(
-    val id: Long,
+    val id: Long = 0,
     val kind: String = "",
-    val title: String = "dwell",
+    val title: String = "Claude Cli",
     val body: String = "",
     val at: Long = 0,
     val route: String = "",
+    @SerialName("notification_epoch") val notificationEpoch: String = "",
+    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("notification_id") val notificationId: Long = 0,
 )
 
 @Serializable
 data class NotificationResponse(
     val ok: Boolean,
+    @SerialName("notification_epoch") val notificationEpoch: String = "",
     val next: Long = 0,
+    val latest: Long = 0,
+    @SerialName("has_more") val hasMore: Boolean = false,
     val items: List<NotificationDto> = emptyList(),
+)
+
+@Serializable
+data class NotificationBaselineResponse(
+    val ok: Boolean,
+    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("notification_epoch") val notificationEpoch: String = "",
+    val latest: Long = 0,
+)
+
+@Serializable
+data class PushSenderStatus(
+    val enabled: Boolean = false,
+    val configured: Boolean = false,
+    val health: String = "unknown",
+    @SerialName("project_match") val projectMatch: Boolean = false,
+)
+
+@Serializable
+data class PushTokenResponse(
+    val ok: Boolean = false,
+    @SerialName("device_id") val deviceId: String = "",
+    val registered: Boolean = false,
+    @SerialName("new_binding") val newBinding: Boolean = false,
+    val sender: PushSenderStatus = PushSenderStatus(),
+    val error: String = "",
+)
+
+@Serializable
+data class PushStatusResponse(
+    val ok: Boolean = false,
+    @SerialName("device_id") val deviceId: String = "",
+    val registered: Boolean = false,
+    val sender: PushSenderStatus = PushSenderStatus(),
+    val token: PushTokenStatus? = null,
+    val pending: Int = 0,
+    val error: String = "",
+)
+
+@Serializable
+data class PushTokenStatus(
+    val updatedAt: Long = 0,
+    val lastSuccessAt: Long = 0,
+    val lastErrorCode: String = "",
+    val lastErrorAt: Long = 0,
+    val quarantinedAt: Long = 0,
+    val quarantineCode: String = "",
 )
 
 @Serializable
@@ -228,7 +289,7 @@ data class ActionResponse(
 )
 
 data class ConnectionConfig(
-    val localUrl: String = "http://192.168.1.10:18787",
+    val localUrl: String = "http://192.168.1.10:8787",
     val remoteUrl: String = "",
     val useRemote: Boolean = false,
     val deviceToken: String = "",

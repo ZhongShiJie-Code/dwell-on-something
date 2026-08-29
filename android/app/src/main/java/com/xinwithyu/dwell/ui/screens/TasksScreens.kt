@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Menu
@@ -40,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.xinwithyu.dwell.core.model.TaskDetailResponse
@@ -62,7 +64,7 @@ fun TasksScreen(
     var refresh by remember { mutableStateOf(0) }
     LaunchedEffect(refresh) { load().onSuccess { response = it; error = "" }.onFailure { error = it.message.orEmpty() } }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 70.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             DwellIconButton(Icons.Outlined.Menu, "菜单", onMenu)
             Spacer(Modifier.weight(1f))
             DwellIconButton(Icons.Outlined.Refresh, "刷新", { refresh++ })
@@ -171,7 +173,7 @@ fun TaskRunScreen(taskId: String, runId: String, onBack: () -> Unit, load: suspe
 private fun TaskCard(task: TaskDto, onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f), RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick).padding(18.dp),
+            .clickable(role = Role.Button, onClick = onClick).padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(task.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
@@ -188,7 +190,7 @@ private fun TaskCard(task: TaskDto, onClick: () -> Unit) {
 private fun RunCard(run: TaskRun, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick).padding(16.dp),
+            .clickable(role = Role.Button, onClick = onClick).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(if (run.status == "success") Icons.Outlined.CheckCircle else if (run.status == "running") Icons.Outlined.Schedule else Icons.Outlined.ErrorOutline, null, tint = statusColor(run.status))
@@ -203,8 +205,8 @@ private fun RunCard(run: TaskRun, onClick: () -> Unit) {
 
 @Composable
 private fun NativeBackBar(onBack: () -> Unit, title: String) {
-    Row(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        DwellIconButton(Icons.Outlined.ArrowBack, "返回", onBack)
+    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 70.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        DwellIconButton(Icons.AutoMirrored.Outlined.ArrowBack, "返回", onBack)
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
     }
 }
@@ -213,7 +215,9 @@ private fun NativeBackBar(onBack: () -> Unit, title: String) {
 private fun TaskActionButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.background(if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.size(19.dp), tint = if (enabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -231,7 +235,14 @@ private fun StatusBadge(status: String) {
 private fun ErrorState(error: String, retry: () -> Unit) {
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(24.dp))
-        Text("重试", modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp)).clickable(onClick = retry).padding(horizontal = 18.dp, vertical = 10.dp))
+        Text(
+            "重试",
+            modifier = Modifier
+                .defaultMinSize(minHeight = 48.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
+                .clickable(role = Role.Button, onClick = retry)
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+        )
     }
 }
 
