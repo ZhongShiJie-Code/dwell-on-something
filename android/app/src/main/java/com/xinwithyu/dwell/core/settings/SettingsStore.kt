@@ -5,12 +5,29 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.net.URI
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.dwellDataStore by preferencesDataStore(name = "dwell-settings-v2")
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+/** Maps the retired local backend port used by pre-0.6.1 Android pairing. */
+fun migrateLegacyDwellLocalUrl(value: String): String {
+    val normalized = value.trim().trimEnd('/')
+    val uri = runCatching { URI(normalized) }.getOrNull() ?: return normalized
+    if (
+        uri.scheme !in setOf("http", "https") ||
+        uri.host.isNullOrBlank() ||
+        uri.port != 18787 ||
+        !uri.path.isNullOrBlank() ||
+        uri.query != null ||
+        uri.fragment != null
+    ) return normalized
+
+    return URI(uri.scheme, uri.userInfo, uri.host, 8788, null, null, null).toString()
+}
 
 data class AppSettings(
     val localUrl: String = "http://192.168.1.10:8787",
@@ -33,7 +50,9 @@ class SettingsStore(private val context: Context) {
 
     val settings: Flow<AppSettings> = context.dwellDataStore.data.map { values ->
         AppSettings(
-            localUrl = values[Keys.localUrl].orEmpty().ifBlank { "http://192.168.1.10:8787" },
+            localUrl = migrateLegacyDwellLocalUrl(
+                values[Keys.localUrl].orEmpty().ifBlank { "http://192.168.1.10:8787" },
+            ),
             remoteUrl = values[Keys.remoteUrl].orEmpty(),
             preferRemote = values[Keys.preferRemote] ?: false,
             themeMode = runCatching { ThemeMode.valueOf(values[Keys.themeMode] ?: ThemeMode.SYSTEM.name) }.getOrDefault(ThemeMode.SYSTEM),
@@ -44,7 +63,7 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveConnection(localUrl: String, remoteUrl: String, preferRemote: Boolean) {
         context.dwellDataStore.edit {
-            it[Keys.localUrl] = normalize(localUrl)
+            it[Keys.localUrl] = migrateLegacyDwellLocalUrl(normalize(localUrl))
             it[Keys.remoteUrl] = normalize(remoteUrl)
             it[Keys.preferRemote] = preferRemote
         }
