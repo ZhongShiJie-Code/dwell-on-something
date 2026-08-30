@@ -45,6 +45,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.xinwithyu.dwell.core.model.TaskDetailResponse
+import com.xinwithyu.dwell.core.time.formatTaskSchedule
+import com.xinwithyu.dwell.core.time.formatTaskTimestamp
 import com.xinwithyu.dwell.core.model.TaskDto
 import com.xinwithyu.dwell.core.model.TaskListResponse
 import com.xinwithyu.dwell.core.model.TaskRun
@@ -108,7 +110,7 @@ fun TaskDetailScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(detail.task.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(12.dp))
-                Text("${if (detail.task.enabled) "已启用" else "已暂停"} · ${detail.task.schedule}", color = if (detail.task.enabled) ColorSuccess else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${if (detail.task.enabled) "已启用" else "已暂停"} · ${formatTaskSchedule(detail.task.schedule)}", color = if (detail.task.enabled) ColorSuccess else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -143,7 +145,7 @@ fun TaskRunScreen(taskId: String, runId: String, onBack: () -> Unit, load: suspe
         else if (data != null) LazyColumn(contentPadding = PaddingValues(24.dp, 12.dp, 24.dp, 44.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 Text(data.task.name, fontFamily = DwellSerif, style = MaterialTheme.typography.headlineMedium)
-                Text("${data.run.sourceLabel} · ${data.run.startedAt.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${data.run.sourceLabel} · ${formatTaskTimestamp(data.run.startedAt).ifBlank { data.run.startedAt.orEmpty() }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(14.dp))
                 StatusBadge(data.run.status)
             }
@@ -196,7 +198,7 @@ private fun RunCard(run: TaskRun, onClick: () -> Unit) {
         Icon(if (run.status == "success") Icons.Outlined.CheckCircle else if (run.status == "running") Icons.Outlined.Schedule else Icons.Outlined.ErrorOutline, null, tint = statusColor(run.status))
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(run.startedAt.orEmpty(), style = MaterialTheme.typography.titleMedium)
+            Text(formatTaskTimestamp(run.startedAt).ifBlank { run.startedAt.orEmpty() }, style = MaterialTheme.typography.titleMedium)
             Text(run.sourceLabel.ifBlank { run.source }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(run.status, style = MaterialTheme.typography.labelLarge, color = statusColor(run.status))

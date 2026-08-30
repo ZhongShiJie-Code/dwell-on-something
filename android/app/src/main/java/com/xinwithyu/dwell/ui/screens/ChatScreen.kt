@@ -207,7 +207,7 @@ fun ChatScreen(
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().imePadding()) {
             ChatTopBar(onMenu, onNewChat, { moreVisible = true })
 
             LazyColumn(
@@ -272,7 +272,7 @@ fun ChatScreen(
                 },
                 onStop = onStop,
                 onRemoveAttachment = { index -> attachments = attachments.filterIndexed { itemIndex, _ -> itemIndex != index } },
-                modifier = Modifier.imePadding().navigationBarsPadding(),
+                modifier = Modifier.navigationBarsPadding(),
             )
         }
 

@@ -160,9 +160,9 @@ class DwellRepository private constructor(context: Context) {
                     model = response.model,
                     error = "",
                 )
-                if (baselineUsable) {
-                    startEvents(token)
-                }
+                // Chat responses also use this stream. A notification baseline may be
+                // temporarily unavailable; do not leave chat sends waiting forever for SSE.
+                startEvents(token)
                 if (BuildConfig.DWELL_FCM_ENABLED) scope.launch { refreshPushStatus() }
                 if (!initialNewChatPrepared) prepareNewChat()
                 initialNewChatPrepared = true
