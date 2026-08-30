@@ -1,6 +1,7 @@
 package com.xinwithyu.dwell.core.repository
 
 import android.content.Context
+import android.os.SystemClock
 import com.xinwithyu.dwell.BuildConfig
 import com.xinwithyu.dwell.core.database.DraftEntity
 import com.xinwithyu.dwell.core.database.DwellDatabase
@@ -100,6 +101,7 @@ class DwellRepository private constructor(context: Context) {
 
     private var eventJob: Job? = null
     private var bootstrapJob: Job? = null
+    private var completionFallbackJob: Job? = null
     private val started = AtomicBoolean(false)
     private var initialNewChatPrepared = false
     private var lastEventId = 0L
@@ -195,6 +197,8 @@ class DwellRepository private constructor(context: Context) {
 
     fun disconnect() {
         eventJob?.cancel()
+        completionFallbackJob?.cancel()
+        completionFallbackJob = null
         val deviceToken = tokenStore.read()
         tokenStore.clear()
         scope.launch {
@@ -257,6 +261,7 @@ class DwellRepository private constructor(context: Context) {
                 }
                 dao.clearDraft(_state.value.activeChatId)
                 refreshActiveMessages()
+                watchForAssistantCompletion()
             }.onFailure {
                 _state.value = _state.value.copy(busy = false, error = friendly(it))
             }
@@ -267,6 +272,11 @@ class DwellRepository private constructor(context: Context) {
         scope.launch {
             val token = tokenStore.read()
             runCatching { callActive { endpoint -> api.stop(endpoint, token) } }
+                .onSuccess {
+                    completionFallbackJob?.cancel()
+                    completionFallbackJob = null
+                    _state.value = _state.value.copy(busy = false)
+                }
                 .onFailure { setError(it) }
         }
     }
@@ -276,6 +286,7 @@ class DwellRepository private constructor(context: Context) {
             val token = tokenStore.read()
             _state.value = _state.value.copy(busy = true, streamingText = "", streamingThought = "")
             runCatching { callActive { endpoint -> api.regenerate(endpoint, token, messageId, mutation()) } }
+                .onSuccess { watchForAssistantCompletion() }
                 .onFailure { _state.value = _state.value.copy(busy = false, error = friendly(it)) }
         }
     }
@@ -504,6 +515,54 @@ class DwellRepository private constructor(context: Context) {
     suspend fun setWebSearch(enabled: Boolean) = settingsStore.setWebSearch(enabled)
     fun updateWebSearch(enabled: Boolean) { scope.launch { settingsStore.setWebSearch(enabled) } }
 
+    private fun watchForAssistantCompletion() {
+        completionFallbackJob?.cancel()
+        completionFallbackJob = scope.launch {
+            val token = tokenStore.read()
+            if (token.isBlank()) return@launch
+
+            val startedAt = SystemClock.elapsedRealtime()
+            var failedAttempts = 0
+            while (isActive && shouldPollAssistantResponse(_state.value.busy, SystemClock.elapsedRealtime() - startedAt)) {
+                delay(assistantResponsePollDelayMillis(failedAttempts))
+                runCatching { callActive { endpoint -> api.bootstrap(endpoint, token) } }
+                    .onSuccess { response ->
+                        failedAttempts = 0
+                        val chatId = response.status.activeChatId.ifBlank { response.messages.chatId }
+                        dao.upsertChats(response.chats.map { it.toEntity() })
+                        if (response.messages.chatId.isNotBlank()) {
+                            dao.replaceMessages(
+                                response.messages.chatId,
+                                response.messages.items.map { it.toEntity(response.messages.chatId) },
+                            )
+                        }
+
+                        val latestUserMessage = response.messages.items.lastOrNull { it.kind == "me" }
+                        val hasAssistantReply = response.messages.items.any { message ->
+                            message.kind == "gu" && (latestUserMessage == null || message.seq > latestUserMessage.seq)
+                        }
+                        _state.value = _state.value.copy(
+                            activeChatId = chatId.ifBlank { _state.value.activeChatId },
+                            busy = response.status.busy,
+                            armed = response.status.armed,
+                            model = response.model,
+                            error = if (!response.status.busy && !hasAssistantReply) "Claude 没有返回回复，请重试" else "",
+                        )
+                        if (!response.status.busy) {
+                            synchronized(streamLock) { pendingText.clear(); pendingThought.clear() }
+                            _state.value = _state.value.copy(streamingText = "", streamingThought = "")
+                            return@launch
+                        }
+                    }
+                    .onFailure { failedAttempts++ }
+            }
+
+            if (_state.value.busy && SystemClock.elapsedRealtime() - startedAt >= ASSISTANT_RESPONSE_FALLBACK_TIMEOUT_MS) {
+                _state.value = _state.value.copy(busy = false, error = "等待 Claude 回复超时，请重试")
+            }
+        }
+    }
+
     private fun startEvents(token: String) {
         eventJob?.cancel()
         eventJob = scope.launch {
@@ -522,6 +581,8 @@ class DwellRepository private constructor(context: Context) {
                                 val eventChatId = event.chatId.ifBlank { _state.value.activeChatId }
                                 if (eventChatId.isNotBlank() && eventChatId != "__new__") _state.value = _state.value.copy(activeChatId = eventChatId, armed = false)
                                 if (event.type == "assistant.completed") {
+                                    completionFallbackJob?.cancel()
+                                    completionFallbackJob = null
                                     syncActiveMessages()
                                     synchronized(streamLock) { pendingText.clear(); pendingThought.clear() }
                                     _state.value = _state.value.copy(busy = false, streamingText = "", streamingThought = "")
@@ -530,10 +591,16 @@ class DwellRepository private constructor(context: Context) {
                                 refreshChats()
                             }
                             "assistant.failed" -> {
+                                completionFallbackJob?.cancel()
+                                completionFallbackJob = null
                                 val detail = event.data["text"]?.jsonPrimitive?.content.orEmpty()
                                 _state.value = _state.value.copy(busy = false, error = detail.ifBlank { "回答失败" })
                             }
-                            "assistant.stopped" -> _state.value = _state.value.copy(busy = false)
+                            "assistant.stopped" -> {
+                                completionFallbackJob?.cancel()
+                                completionFallbackJob = null
+                                _state.value = _state.value.copy(busy = false)
+                            }
                             "model.changed" -> scope.launch { refreshModel() }
                             "notification.created" -> {
                                 val id = event.data["notification_id"]?.jsonPrimitive?.longOrNull
