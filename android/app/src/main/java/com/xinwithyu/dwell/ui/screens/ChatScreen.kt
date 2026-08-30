@@ -87,6 +87,7 @@ import com.xinwithyu.dwell.core.model.MessageDto
 import com.xinwithyu.dwell.core.model.ModelView
 import com.xinwithyu.dwell.core.repository.PendingAttachment
 import com.xinwithyu.dwell.ui.components.ActionPill
+import com.xinwithyu.dwell.ui.components.AssistantAnswerPresentation
 import com.xinwithyu.dwell.ui.components.AddToChatSheet
 import com.xinwithyu.dwell.ui.components.ChatComposer
 import com.xinwithyu.dwell.ui.components.ClaudeBurst
@@ -239,6 +240,7 @@ fun ChatScreen(
                             onRegenerate = { onRegenerate(message.seq) },
                             onFeedback = { value -> onFeedback(message.seq, value) },
                             onDetail = { title, body -> detailSheet = title to body },
+                            onFollowUp = { followUp -> onSend(followUp, emptyList()) },
                         )
                         "think" -> ThoughtCard(message.text) { detailSheet = "Thought process" to message.text }
                         "tool" -> ToolCard(message)
@@ -399,15 +401,18 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onFeedback: (String) -> Unit,
     onDetail: (String, String) -> Unit,
+    onFollowUp: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val urls = remember(message.text) { Regex("https?://[^\\s)]+", RegexOption.IGNORE_CASE).findAll(message.text).map { it.value }.distinct().toList() }
     Column(Modifier.fillMaxWidth()) {
         Text(markdown(message.text), style = MaterialTheme.typography.bodyLarge)
-        if (urls.isNotEmpty() || message.text.length > 420) {
-            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (urls.isNotEmpty()) ActionPill({ onDetail("Sources", urls.joinToString("\n\n")) }) { Text("Sources", style = MaterialTheme.typography.labelLarge) }
-                if (message.text.length > 420) ActionPill({ onDetail("Summary", summaryOf(message.text)) }) { Icon(Icons.Outlined.Waves, null, Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)); Text("Summary") }
+        if (message.text.length > 420) {
+            Row(Modifier.padding(top = 12.dp)) {
+                ActionPill({ onDetail("Summary", summaryOf(message.text)) }) {
+                    Icon(Icons.Outlined.Waves, null, Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Summary")
+                }
             }
         }
         if (group != null && group.variants.size > 1) {
@@ -429,6 +434,15 @@ private fun AssistantMessage(
             MessageAction(Icons.Outlined.ThumbDown, "没帮助", selected = message.feedback == "down") { onFeedback(if (message.feedback == "down") "" else "down") }
             MessageAction(Icons.Outlined.Refresh, "重新生成", onClick = onRegenerate)
         }
+        AssistantAnswerPresentation(
+            answer = message.text,
+            onOpenSource = { url ->
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    .onFailure { onDetail("来源链接", url) }
+            },
+            onFollowUp = onFollowUp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
         MessageTime(message.at)
     }
 }
